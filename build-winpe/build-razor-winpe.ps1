@@ -172,24 +172,22 @@ write-host "*******************************************************"
 write-host "Winpe is ready, trying to process boot.wim and install.wim if they exist."
 write-host "*******************************************************"
 
-#if ADK is 8.1, we are probably processing R2. 
-if($adkversion -eq 8.1) {
+#need to add VMXNET3 drivers to boot.wim and install.wim
 #copy boot.wim to the output area
     write-host "Starting to work with boot.wim and install.wim"
     $bootwimsource = Join-Path $cwd "boot.wim"
     $installwimsource = Join-Path $cwd "install.wim"
+
 #test boot.wim and install.wim path and exit if not null
     if(-not(Test-path $bootwimsource)) {
-        Write-host "No Windows 2012 R2 boot.wim or install.wim files present, exiting."
-        Write-host "Processing for Windows PE is complete, if Windows 2012 R2 is being used"
-        Write-host "refer to the documentation for additional files required for processing"
+        Write-host "No Windows boot.wim or install.wim files present, exiting"
+        Write-host "Refer to the documentation for additional files required for processing"
         exit 1
     } else {
         if(-not(Test-path $installwimsource)) {
-        Write-host "No Windows 2012 R2 boot.wim or install.wim files present, exiting."
-        Write-host "Processing for Windows PE is complete, if Windows 2012 R2 is being used"
-        Write-host "refer to the documentation for additional files required for processing"
-        exit 1
+            Write-host "No Windows boot.wim or install.wim files present, exiting."
+            Write-host "Refer to the documentation for additional files required for processing"
+            exit 1
         }
     }
 
@@ -230,5 +228,5 @@ if($adkversion -eq 8.1) {
     } else {
         Write-Host "no installwim source"
     }
-}
+
 Clear-WindowsCorruptMountPoint
