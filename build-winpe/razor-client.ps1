@@ -7,13 +7,11 @@ if (test-path $configfile) {
     . $configfile
     # $server is now set
 } else {
-    # No sign of a configuration file, guess that our DHCP server is also our
-    # Razor server, and point at that.  Could easily be wrong, but what else
-    # are we going to do? --daniel 2013-10-28
-    #
-    # @todo danielp 2013-10-29: is there a better way to handle multiple
-    # network adapters with DHCP addresses than I have here?
-    write-host "guessing that DHCP server == Razor server!"
+    # No sign of a configuration file, our DHCP server is also our
+    # ASM server, 
+    # 
+    # 
+    write-host "DHCP server == Razor server!"
     $server = get-wmiobject win32_networkadapterconfiguration |
                   where { $_.ipaddress -and
                           $_.dhcpenabled -eq "true" -and
@@ -25,9 +23,8 @@ if (test-path $configfile) {
 $baseurl = "http://${server}:8080/svc"
 
 
-# Figure out our node hardware ID details, since we can't get at anything more
-# useful from our boot environment.  Sadly, rediscovery is the order of the
-# day here.  Damn WinPE.
+# Figure out our node hardware ID details 
+# 
 $hwid = get-wmiobject Win32_NetworkAdapter -filter "netenabled='true'" | `
             select -expandproperty macaddress | `
             foreach-object -begin { $n = 0 } -process { $n++; "net${n}=${_}"; }
@@ -42,12 +39,10 @@ $id = $data.id
 write-host "mapped myself to node ID ${id}"
 
 # Finally, fetch down our next stage of script and evaluate it.
-# Apparently this is the best way to just get the string; certainly, it beats
-# the results from `invoke-webrequest` and friends for sanity.
 $url = "${baseurl}/file/${id}/second-stage.ps1"
 write-host "load and execute ${url}"
 (new-object System.Net.WebClient).DownloadString($url) | invoke-expression
 
-# ...and we are done.
+# ...and done.
 write-host "second stage completed, exiting."
 exit
