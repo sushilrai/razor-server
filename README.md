@@ -5,27 +5,27 @@ bare-metal and virtual systems. It's aimed at solving the problem of how to
 bring new metal into a state where your existing DevOps/configuration
 management workflows can take it over.
 
-Newly added machines in a Razor deployment will PXE-boot from a special
-Razor Microkernel image, then check in, provide Razor with inventory
-information, and wait for further instructions. Razor will consult
-user-created policy rules to choose which preconfigured model to apply to a
-new node, which will begin to follow the model's directions, giving
-feedback to Razor as it completes various steps. Models can include steps
-for handoff to a DevOps system such as
-[Puppet](https://github.com/puppetlabs/puppet) or to any other system
-capable of controlling the node (such as a vCenter server taking possession
-of ESX systems).
+Newly added machines in a Razor deployment will PXE-boot from a special Razor
+Microkernel image, then check in, provide Razor with inventory information,
+and wait for further instructions. Razor will consult user-created policy
+rules to choose which recpies to apply to a new node, which will begin to
+follow the task directions, giving feedback to Razor as it completes various
+steps. Tasks can include steps for handoff to a DevOps system such as
+[Puppet](https://github.com/puppetlabs/puppet) or to any other system capable
+of controlling the node (such as a vCenter server taking possession of ESX
+systems).
 
 ***
 
 This is a [0.x release](http://semvber.org); that means that we might make
 backwards incompatible changes, especially to the database schema which
 would force you to rebuild all the machines that Razor is managing. The
-current code base is perfectlt suitable for evaluation and smaller lab
+current code base is perfectly suitable for evaluation and smaller lab
 setups but not for production use.
 
 ## Getting in touch
 
+* bug/issue tracker: [RAZOR project in JIRA](https://tickets.puppetlabs.com/browse/RAZOR)
 * on IRC: `#puppet-razor` on [freenode](http://freenode.net/)
 * mailing list: [puppet-razor@googlegroups.com](http://groups.google.com/group/puppet-razor)
 
@@ -60,7 +60,7 @@ image that Razor boots on new nodes to do discovery. It periodically
 submits [facts](https://github.com/puppetlabs/facter) about the node and
 waits for instructions from the server about what to do next, if anything.
 
-A [prebuilt archive](http://links.puppetlabs.com/razor-microkernel-001.tar)
+A [prebuilt archive](http://links.puppetlabs.com/razor-microkernel-latest.tar)
 is available.
 
 ## Razor Client

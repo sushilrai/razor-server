@@ -8,6 +8,53 @@ describe "command and query API" do
 
   let(:app) { Razor::App }
 
+  before :each do
+    authorize 'fred', 'dead'
+  end
+
+  # JSON schema for collections where we only send back object references;
+  # these are the same no matter what the underlying collection elements
+  # look like
+  ObjectRefCollectionSchema = {
+    '$schema'  => 'http://json-schema.org/draft-04/schema#',
+    'title'    => "Broker Collection JSON Schema",
+    'type'     => 'object',
+    'additionalProperties' => false,
+    'properties' => {
+      "spec" => {
+        '$schema' => 'http://json-schema.org/draft-04/schema#',
+        'type'    => 'string',
+        'pattern' => '^https?://'
+      },
+      "items" => {
+        '$schema' => 'http://json-schema.org/draft-04/schema#',
+        'type'    => 'array',
+        'items'    => {
+          '$schema'  => 'http://json-schema.org/draft-04/schema#',
+          'type'     => 'object',
+          'additionalProperties' => false,
+          'properties' => {
+            "spec" => {
+              '$schema' => 'http://json-schema.org/draft-04/schema#',
+              'type'    => 'string',
+              'pattern' => '^https?://'
+            },
+            "id" => {
+              '$schema' => 'http://json-schema.org/draft-04/schema#',
+              'type'    => 'string',
+              'pattern' => '^https?://'
+            },
+            "name" => {
+              '$schema' => 'http://json-schema.org/draft-04/schema#',
+              'type'    => 'string',
+              'pattern' => '^[^\n]+$'
+            }
+          }
+        }
+      }
+    }
+  }.freeze
+
   context "/ - API navigation index" do
     %w[text/plain text/html text/* application/js].each do |type|
       it "should reject #{type.inspect} content requests" do
@@ -56,7 +103,7 @@ describe "command and query API" do
     # `before` is used instead of `let` since the database gets rolled
     # back after every test
     before(:each) do
-      use_installer_fixtures
+      use_task_fixtures
 
       @node = Fabricate(:node_with_facts)
       @tag = Razor::Data::Tag.create(:name => "t1", :rule => ["=", ["fact", "f1"], "a"])
@@ -70,11 +117,11 @@ describe "command and query API" do
     end
 
     it "should list all policies" do
-      pl =  Fabricate(:policy, :repo => @repo, :installer_name => "some_os")
+      pl =  Fabricate(:policy, :repo => @repo, :task_name => "some_os")
       pl.add_tag @tag
 
       get '/api/collections/policies'
-      data = last_response.json
+      data = last_response.json['items']
       data.size.should be 1
       data.all? do |policy|
         policy.keys.should =~ %w[id name spec]
@@ -84,14 +131,14 @@ describe "command and query API" do
 
   context "/api/collections/policies/ID - get policy" do
     before(:each) do
-      use_installer_fixtures
+      use_task_fixtures
 
       @node = Fabricate(:node_with_facts)
       @tag = Razor::Data::Tag.create(:name => "t1", :rule => ["=", ["fact", "f1"], "a"])
       @repo = Fabricate(:repo)
     end
 
-    subject(:pl){ Fabricate(:policy, :repo => @repo, :installer_name => "some_os")}
+    subject(:pl){ Fabricate(:policy, :repo => @repo, :task_name => "some_os")}
 
     it "should exist" do
       get "/api/collections/policies/#{URI.escape(pl.name)}"
@@ -99,10 +146,14 @@ describe "command and query API" do
     end
 
     it "should have the right keys" do
+      pl.max_count = 10
+      pl.node_metadata = { "key1" => "val1" }
+      pl.save
+
       get "/api/collections/policies/#{URI.escape(pl.name)}"
       policy = last_response.json
 
-      policy.keys.should =~ %w[name id spec configuration enabled rule_number max_count repo tags installer broker]
+      policy.keys.should =~ %w[name id spec configuration enabled max_count repo tags task broker node_metadata nodes]
       policy["repo"].keys.should =~ %w[id name spec]
       policy["configuration"].keys.should =~ %w[hostname_pattern root_password]
       policy["tags"].should be_empty
@@ -121,7 +172,7 @@ describe "command and query API" do
     it "should list all tags" do
       t = Razor::Data::Tag.create(:name=>"tag 1", :matcher =>Razor::Matcher.new(["=",["fact","one"],"1"]))
       get '/api/collections/tags'
-      data = last_response.json
+      data = last_response.json['items']
       data.size.should be 1
       data.all? do |tag|
         tag.keys.should =~ %w[id name spec]
@@ -140,7 +191,7 @@ describe "command and query API" do
     it "should have the right keys" do
       get "/api/collections/tags/#{t.name}"
       tag = last_response.json
-      tag.keys.should =~ %w[ spec id name rule ]
+      tag.keys.should =~ %w[ spec id name rule nodes policies]
       tag["rule"].should == ["=",["fact","one"],"1"]
     end
   end
@@ -153,7 +204,7 @@ describe "command and query API" do
       get "/api/collections/repos"
       last_response.status.should == 200
 
-      repos = last_response.json
+      repos = last_response.json['items']
       repos.size.should == 2
       repos.map { |repo| repo["name"] }.should =~ %w[ repo1 repo2 ]
       repos.all? { |repo| repo.keys.should =~ %w[id name spec] }
@@ -177,12 +228,12 @@ describe "command and query API" do
     end
   end
 
-  context "/api/collections/installers/:name" do
+  context "/api/collections/tasks/:name" do
     # @todo lutter 2013-10-08: I would like to pull the schema for the base
     # property out into a ObjectReferenceSchema and make the base property
     # a $ref to that. My attempts at doing that have failed so far, because
     # json-schema fails when we validate against the resulting
-    # InstallerItemSchema, complaining that the schema for base is not
+    # TaskItemSchema, complaining that the schema for base is not
     # valid
     #
     # Note that to use a separate ObjectReferenceSchema, we have to
@@ -191,9 +242,9 @@ describe "command and query API" do
     #   ObjectReferenceSchema['id'] = url
     #   sch = JSON::Schema::new(ObjectReferenceSchema, url)
     #   JSON::Validator.add_schema(sch)
-    InstallerItemSchema = {
+    TaskItemSchema = {
       '$schema'  => 'http://json-schema.org/draft-04/schema#',
-      'title'    => "Installer Item JSON Schema",
+      'title'    => "Task Item JSON Schema",
       'type'     => 'object',
       'required' => %w[spec id name os boot_seq],
       'properties' => {
@@ -263,80 +314,48 @@ describe "command and query API" do
     end
 
     before(:each) do
-      use_installer_fixtures
+      use_task_fixtures
     end
 
-    it "works for file-based installers" do
-      get "/api/collections/installers/some_os"
+    it "works for file-based tasks" do
+      get "/api/collections/tasks/some_os"
       last_response.status.should == 200
 
       data = last_response.json
       data["name"].should == "some_os"
       data["boot_seq"].keys.should =~ %w[1 2 default]
       data["boot_seq"]["2"].should == "boot_again"
-      validate! InstallerItemSchema, last_response.body
+      validate! TaskItemSchema, last_response.body
     end
 
-    it "works for DB-backed installers" do
-      inst = Razor::Data::Installer.create(:name => 'dbinst',
+    it "works for DB-backed tasks" do
+      inst = Razor::Data::Task.create(:name => 'dbinst',
                                            :os => 'SomeOS',
                                            :os_version => '6',
-                                           :boot_seq => { 1 => "install",
+                                           :boot_seq => { 1 => "task",
                                                           "default" => "local"})
-      get "/api/collections/installers/dbinst"
+      get "/api/collections/tasks/dbinst"
       last_response.status.should == 200
 
       data = last_response.json
       data["name"].should == "dbinst"
       data["boot_seq"].keys.should =~ %w[1 default]
-      validate! InstallerItemSchema, last_response.body
+      validate! TaskItemSchema, last_response.body
     end
 
-    it "includes a reference to the base installer" do
-      get "/api/collections/installers/some_os_derived"
+    it "includes a reference to the base task" do
+      get "/api/collections/tasks/some_os_derived"
       last_response.status.should == 200
 
       data = last_response.json
       data["name"].should == "some_os_derived"
       data["os"]["version"].should == "4"
       data["base"]["name"].should == "some_os"
-      validate! InstallerItemSchema, last_response.body
+      validate! TaskItemSchema, last_response.body
     end
   end
 
   context "/api/collections/brokers" do
-    BrokerCollectionSchema = {
-      '$schema'  => 'http://json-schema.org/draft-04/schema#',
-      'title'    => "Broker Collection JSON Schema",
-      'type'     => 'array',
-      'items'    => {
-        '$schema'  => 'http://json-schema.org/draft-04/schema#',
-        'type'     => 'object',
-        'additionalProperties' => false,
-        'properties' => {
-          "spec" => {
-            '$schema' => 'http://json-schema.org/draft-04/schema#',
-            'type'    => 'string',
-            'pattern' => '^https?://'
-          },
-          "id" => {
-            '$schema' => 'http://json-schema.org/draft-04/schema#',
-            'type'    => 'string',
-            'pattern' => '^https?://'
-          },
-          "obj_id" => {
-            '$schema' => 'http://json-schema.org/draft-04/schema#',
-            'type'    => 'number'
-          },
-          "name" => {
-            '$schema' => 'http://json-schema.org/draft-04/schema#',
-            'type'    => 'string',
-            'pattern' => '^[^\n]+$'
-          }
-        }
-      }
-    }.freeze
-
     BrokerItemSchema = {
       '$schema'  => 'http://json-schema.org/draft-04/schema#',
       'title'    => "Broker Collection JSON Schema",
@@ -380,6 +399,27 @@ describe "command and query API" do
               }
             ]
           }
+        },
+        'policies'     => {
+          '$schema' => 'http://json-schema.org/draft-04/schema#',
+          'type'    => 'object',
+          'required' => %w[id count name],
+          'properties' => {
+            'id'   => {
+              '$schema'  => 'http://json-schema.org/draft-04/schema#',
+              'type'     => 'string',
+              'pattern'  => '^https?://'
+            },
+            'count'     => {
+              '$schema'  => 'http://json-schema.org/draft-04/schema#',
+              'type'     => 'integer'
+            },
+            'name'     => {
+              '$schema'  => 'http://json-schema.org/draft-04/schema#',
+              'type'     => 'string',
+              'pattern'  => '^[a-zA-Z0-9 ]+$'
+            }
+          }
         }
       },
       'additionalProperties' => false,
@@ -401,9 +441,11 @@ describe "command and query API" do
         get "/api/collections/brokers"
 
         last_response.status.should == 200
-        last_response.json.should be_an_instance_of Array
-        last_response.json.count.should == expected
-        validate! BrokerCollectionSchema, last_response.body
+
+        brokers = last_response.json['items']
+        brokers.should be_an_instance_of Array
+        brokers.count.should == expected
+        validate! ObjectRefCollectionSchema, last_response.body
       end
 
       it "should 404 a broker requested that does not exist" do
@@ -444,38 +486,6 @@ describe "command and query API" do
   end
 
   context "/api/collections/nodes" do
-    NodeCollectionSchema = {
-      '$schema'  => 'http://json-schema.org/draft-04/schema#',
-      'title'    => "Node Collection JSON Schema",
-      'type'     => 'array',
-      'items'    => {
-        '$schema'  => 'http://json-schema.org/draft-04/schema#',
-        'type'     => 'object',
-        'additionalProperties' => false,
-        'properties' => {
-          "spec" => {
-            '$schema' => 'http://json-schema.org/draft-04/schema#',
-            'type'    => 'string',
-            'pattern' => '^https?://'
-          },
-          "id" => {
-            '$schema' => 'http://json-schema.org/draft-04/schema#',
-            'type'    => 'string',
-            'pattern' => '^https?://'
-          },
-          "obj_id" => {
-            '$schema' => 'http://json-schema.org/draft-04/schema#',
-            'type'    => 'number'
-          },
-          "name" => {
-            '$schema' => 'http://json-schema.org/draft-04/schema#',
-            'type'    => 'string',
-            'pattern' => '^[^\n]+$'
-          }
-        }
-      }
-    }.freeze
-
     NodeItemSchema = {
       '$schema'  => 'http://json-schema.org/draft-04/schema#',
       'title'    => "Node Collection JSON Schema",
@@ -581,6 +591,26 @@ describe "command and query API" do
             'minLength' => 0
           }
         },
+        'metadata' => {
+          '$schema'       => 'http://json-schema.org/draft-04/schema#',
+          'type'          => 'object',
+          'minProperties' => 0,
+          'additionalProperties' => {
+            '$schema'   => 'http://json-schema.org/draft-04/schema#',
+            'type'      => 'string',
+            'minLength' => 0
+          }
+        },
+        'state' => {
+          '$schema'       => 'http://json-schema.org/draft-04/schema#',
+          'type'          => 'object',
+          'minProperties' => 0,
+          'additionalProperties' => {
+            '$schema'   => 'http://json-schema.org/draft-04/schema#',
+            'type'      => 'string',
+            'minLength' => 0
+          }
+        },
         'hostname' => {
           '$schema'  => 'http://json-schema.org/draft-04/schema#',
           'type'     => 'string',
@@ -589,16 +619,28 @@ describe "command and query API" do
           '$schema'  => 'http://json-schema.org/draft-04/schema#',
           'type'     => 'string',
         },
-        'ip_address' => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
-          'type'     => 'string',
-          'pattern'  => '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'
-        },
-        'boot_count' => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
-          'type'     => 'integer',
-          'minimum'  => 0
-        },
+        'power' => {
+          '$schema'    => 'http://json-schema.org/draft-04/schema#',
+          'type'       => 'object',
+          'properties' => {
+            'desired_power_state' => {
+              '$schema'  => 'http://json-schema.org/draft-04/schema#',
+              'type'     => ['string', 'null'],
+              'pattern'  => 'on|off'
+            },
+            'last_known_power_state' => {
+              '$schema'  => 'http://json-schema.org/draft-04/schema#',
+              'type'     => ['string', 'null'],
+              'pattern'  => 'on|off'
+            },
+            'last_power_state_update_at' => {
+              '$schema'  => 'http://json-schema.org/draft-04/schema#',
+              'type'     => ['string', 'null'],
+              # 'pattern' => '' ...date field.
+            }
+          },
+          'additionalProperties' => false,
+        }
       },
       'additionalProperties' => false,
     }.freeze
@@ -619,9 +661,10 @@ describe "command and query API" do
         get "/api/collections/nodes"
 
         last_response.status.should == 200
-        last_response.json.should be_an_instance_of Array
-        last_response.json.count.should == expected
-        validate! NodeCollectionSchema, last_response.body
+        nodes = last_response.json['items']
+        nodes.should be_an_instance_of Array
+        nodes.count.should == expected
+        validate! ObjectRefCollectionSchema, last_response.body
       end
 
       it "should 404 a node requested that does not exist" do

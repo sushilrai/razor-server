@@ -5,10 +5,13 @@ describe "commands to change a policy's 'enabled' flag" do
   include Rack::Test::Methods
 
   let(:app) { Razor::App }
+  before :each do
+    authorize 'fred', 'dead'
+  end
 
   context "/api/commands/create-policy" do
     before :each do
-      use_installer_fixtures
+      use_task_fixtures
       header 'content-type', 'application/json'
     end
 

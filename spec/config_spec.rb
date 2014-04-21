@@ -183,8 +183,8 @@ describe Razor::Config do
     end
   end
 
-  describe "installer_paths" do
-    it_behaves_like "expanding paths", 'installer'
+  describe "task_paths" do
+    it_behaves_like "expanding paths", 'task'
   end
 
   describe "broker_paths" do

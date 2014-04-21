@@ -1,8 +1,0 @@
----
-
-os_version: 6
-label: Red Hat Enterprise Linux 6
-description: Red Hat Generic Model
-boot_sequence:
-  1: boot_install
-  default: boot_local

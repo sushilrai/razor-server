@@ -29,7 +29,12 @@ module Razor::Data
   end
 
   class Node < Sequel::Model
+
+    #See the method schema_type_class() for some special considerations
+    #regarding the use of serialization.
     plugin :serialization, :json, :facts
+    plugin :serialization, :json, :metadata
+
     plugin :typecast_on_load, :hw_info
 
     many_to_one :policy
@@ -39,6 +44,15 @@ module Razor::Data
     # checkin with the microkernel. These are not necessarily the same tags
     # that would apply if the node was matched right now
     many_to_many :tags
+
+    def around_save
+      #Re-eval the nodes tags if the metadata has changed.  We dont need
+      #this for new nodes or fact changes as they only occur/change on checkin
+      #which already triggers tag evaluation.
+      need_eval_tags = changed_columns.include?(:metadata)
+      super
+      publish('eval_tags') if need_eval_tags
+    end
 
     # Return a 'name'; for now this is a fixed generated string
     # @todo lutter 2013-08-30: figure out a way for users to control how
@@ -68,8 +82,14 @@ module Razor::Data
       end
     end
 
-    def installer
-      policy ? policy.installer : Razor::Installer.mk_installer
+    def task
+      if policy
+        policy.task
+      elsif installed
+        Razor::Task.noop_task
+      else
+        Razor::Task.mk_task
+      end
     end
 
     def domainname
@@ -125,8 +145,27 @@ module Razor::Data
     def bind(policy)
       self.policy = policy
       self.boot_count = 1
+      # @todo lutter 2013-12-31: we mark the node uninstalled as soon as a
+      # policy is bound to it. There's two improvements that could be made:
+      # 1. not every policy will be destructive, and we should preserve the
+      #    'installed' state for non-destructive policies (requires additional
+      #    metadata in tasks)
+      # 2. there's a small time window between binding the node and the
+      #    task booting in which the node technically is still installed.
+      #    We could reset the installed fields only when we boot into the new
+      #    policy for the first time, but it seems like a minor win, and would
+      #    require a flag to remember whether we've already booted into a
+      #    policy or not
+      self.installed = nil
+      self.installed_at = nil
       self.root_password = policy.root_password
       self.hostname = policy.hostname_pattern.gsub(/\$\{\s*id\s*\}/, id.to_s)
+
+      if policy.node_metadata
+        modify_metadata('no_replace' => true, 'update' => policy.node_metadata)
+      end
+
+      self
     end
 
     # This is a hack around the fact that the auto_validates plugin does
@@ -134,10 +173,13 @@ module Razor::Data
     # happens in the before_save hook, which runs after validation)
     #
     # To avoid spurious error messages, we tell the validation machinery to
-    # expect a Hash resp. an Array
+    # expect a Hash resp.
+    #
+    # Add the fields to be serialized to the 'serialized_fields' array
+    #
     # FIXME: Figure out a way to address this issue upstream
     def schema_type_class(k)
-      if k == :facts
+      if [ :facts, :metadata ].include?(k)
         Hash
       else
         super
@@ -162,18 +204,55 @@ module Razor::Data
           # MAC addresses are sane
         end
       end
+
+      if ipmi_hostname.nil?
+        ipmi_username and errors.add(:ipmi_username, 'you must also set an IPMI hostname')
+        ipmi_password and errors.add(:ipmi_password, 'you must also set an IPMI hostname')
+      end
+    end
+
+    def eval_tags
+      new_tags = Tag.match(self)
+      (self.tags - new_tags).each { |t| self.remove_tag(t) }
+      (new_tags - self.tags).each { |t| self.add_tag(t) }
     end
 
     # Update the tags for this node and try to bind a policy.
     def match_and_bind
-      new_tags = Tag.match(self)
-      (self.tags - new_tags).each { |t| self.remove_tag(t) }
-      (new_tags - self.tags).each { |t| self.add_tag(t) }
+      eval_tags
       Policy.bind(self)
     rescue Razor::Matcher::RuleEvaluationError => e
       log_append :severity => "error", :msg => e.message
       save
       raise e
+    end
+
+    # Modify metadata the API reciever does alot of sanity checking.
+    # Lets not do to much here and assume that internal use is done with
+    # intent.
+    def modify_metadata(data)
+      new_metadata = metadata
+
+      if data['update']
+        data['update'].is_a? Hash or raise ArgumentError, 'update must be a hash'
+        replace = (not [true, 'true'].include?(data['no_replace']))
+        data['update'].each do |k,v|
+          new_metadata[k] = v if replace or not new_metadata[k]
+        end
+      end
+      if data['remove']
+        data['remove'].is_a? Array or raise ArgumentError, 'remove must be an array'
+        data['remove'].each do |k,v|
+          new_metadata.delete(k)
+        end
+      end
+      if data['clear'] == true or data['clear'] == 'true'
+        new_metadata = Hash.new
+      end
+
+      self.metadata = new_metadata
+      save_changes
+      self
     end
 
     # Process a checkin for this node; +body+ must be a hash where
@@ -217,6 +296,8 @@ module Razor::Data
     # +hw_hash+, implying that +mac+ might be an array of MAC addresses
     def self.canonicalize_hw_info(hw_info)
       if macs = hw_info["mac"]
+        macs = [ macs ] unless macs.is_a? Array
+        macs = macs.map { |mac| mac.gsub(":", "-") }
         # hw_info might contain an array of mac's; spread that out
         hw_info = hw_info.to_a.reject! {|k,v| k == "mac" } +
                   ["mac"].product(macs)
@@ -275,7 +356,90 @@ module Razor::Data
       name = node.boot_count if name.nil? or name.empty?
       node.log_append(:event => :stage_done, :stage => name || node.boot_count)
       node.boot_count += 1
+      if name == "finished" and node.policy
+        node.installed = node.policy.name
+        node.installed_at = DateTime.now
+      end
       node.save
+    end
+
+    def self.search(params)
+      nodes = self.dataset
+      # Search by hostname
+      if params['hostname']
+        rx = params.delete("hostname")
+        begin
+          rx = Regexp.new(rx)
+        rescue
+          # If we can't compile the user's input into a regexp,
+          # just search for the raw string
+        end
+        nodes = nodes.grep([:hostname, :ipmi_hostname], rx,
+                           :case_insensitive => true)
+      end
+      # Search by hw_info
+      hw_info = canonicalize_hw_info(params)
+      unless hw_info.empty?
+        nodes = nodes.where(:hw_info.pg_array.overlaps(hw_info))
+      end
+      nodes
+    end
+
+    ########################################################################
+    # IPMI and power management support code
+    def last_known_power_state=(what)
+      self.last_power_state_update_at = Time.now()
+      super(what)
+    end
+
+    # Poll for the IPMI power state of this node, and update the last
+    # known state.  This is a synchronous function, and is expected to be
+    # called from a background processing queue.
+    #
+    # We update our power state regardless of the outcome, including setting
+    # it to "unknown" on failures of the IPMI code, though not on failures
+    # like command execution blowing up.
+    #
+    # If we have a current power state, and a desired power state, and they
+    # don't match, we also queue work to toggle power into the
+    # appropriate state.
+    def update_power_state!
+      begin
+        self.last_known_power_state = Razor::IPMI.on?(self) ? 'on' : 'off'
+
+        # If we have both a desired and known power state...
+        unless self.desired_power_state.nil? or self.last_known_power_state.nil?
+          # ...and they don't match...
+          unless self.desired_power_state == self.last_known_power_state
+            # ...toggle our power state to what is desired.  This is put into
+            # the background because it isn't actually related to our current
+            # transaction, and that ensures we do the right thing later.
+            self.publish(self.desired_power_state)
+          end
+        end
+      rescue Razor::IPMI::IPMIError
+        self.last_known_power_state = nil
+        raise
+      ensure
+        self.save_changes
+      end
+    end
+
+    # Request a reboot from the machine via IPMI.  This supports both hard and
+    # soft reboots.  This is synchronous, and is expected to be called in the
+    # background from the message queue.
+    def reboot!(hard)
+      Razor::IPMI.reset(self, hard)
+    end
+
+    # Turn the node on.
+    def on
+      Razor::IPMI.power(self, true)
+    end
+
+    # Turn the node off.
+    def off
+      Razor::IPMI.power(self, false)
     end
   end
 end

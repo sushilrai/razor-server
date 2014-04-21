@@ -9,11 +9,12 @@ describe "provisioning API" do
   end
 
   before(:each) do
-    use_installer_fixtures
+    use_task_fixtures
+    authorize 'fred', 'dead'
   end
 
   let (:policy) do
-    Fabricate(:policy, installer_name: 'some_os')
+    Fabricate(:policy, task_name: 'some_os')
   end
 
   it "should boot new nodes into the MK" do
@@ -65,7 +66,7 @@ describe "provisioning API" do
       assert_booting("Microkernel")
       @node.reload
       @node.log.last["event"].should == "boot"
-      @node.log.last["installer"].should == "microkernel"
+      @node.log.last["task"].should == "microkernel"
       @node.log.last["template"].should == "boot"
       @node.log.last["repo"].should == "microkernel"
     end
@@ -100,6 +101,17 @@ describe "provisioning API" do
 
         get "/svc/boot?net0=#{@mac}"
         assert_booting("Boot local")
+      end
+
+      it "marks node installed when name is 'finished'" do
+        @node.installed.should be_nil
+
+        get "/svc/stage-done/#{@node.id}?name=finished"
+        last_response.status.should == 204
+
+        @node = Node[@node.id]
+        @node.installed.should == policy.name
+        @node.installed_at.should_not be_nil
       end
     end
 
@@ -164,7 +176,8 @@ describe "provisioning API" do
 
     it "should interpolate store_url" do
       get "/svc/file/#{@node.id}/store_url"
-      assert_url_response("/svc/store/#{@node.id}", "v1" => "42", "v2" => "3")
+      assert_url_response("/svc/store_metadata/#{@node.id}",
+                          "v1" => "42", "v2" => "3")
     end
 
     it "should interpolate node_url" do
@@ -196,6 +209,13 @@ describe "provisioning API" do
       end
     end
 
+    it "should interpolate store_metadata_url" do
+      get "/svc/file/#{@node.id}/store_metadata_url"
+      assert_url_response("/svc/store_metadata/#{@node.id}",
+                          "a" => "v1", "b" => "v2",
+                          "remove" => ["x", "y", "z"])
+    end
+
     it "should provide config" do
       get "/svc/file/#{@node.id}/config"
       assert_template_body("Razor::Util::TemplateConfig")
@@ -206,7 +226,7 @@ describe "provisioning API" do
       last_response.status.should == 500
     end
 
-    it "should provide access to node and installer" do
+    it "should provide access to node and task" do
       get "/svc/file/#{@node.id}/node_installer_vars"
       assert_template_body("some_os/some_os")
     end
@@ -235,27 +255,50 @@ describe "provisioning API" do
     end
   end
 
-  describe "storing node IP" do
+  describe "storing node metadata" do
     before(:each) do
       @node = Fabricate(:node)
     end
 
-    it "should store an IP" do
-      get "/svc/store/#{@node.id}?ip=8.8.8.8"
+    it "should store a value" do
+      get "/svc/store_metadata/#{@node.id}?a=v1"
       last_response.status.should == 204
 
       node = Node[@node.id]
-      node.ip_address.should == "8.8.8.8"
+      node.metadata.should == { "a" => "v1" }
     end
 
-    it "should return 404 for nonexistent nodes" do
-      get "/svc/store/#{@node.id+1}?ip=8.8.8.8"
-      last_response.status.should == 404
+    it "should update a value" do
+      @node.metadata["a"] = "old"
+      @node.save
+
+      get "/svc/store_metadata/#{@node.id}?a=v1"
+      last_response.status.should == 204
+
+      node = Node[@node.id]
+      node.metadata.should == { "a" => "v1" }
     end
 
-    it "should return 400 when ip not provided" do
-      get "/svc/store/#{@node.id}"
-      last_response.status.should == 400
+    it "should remove a value" do
+      @node.metadata["x"] = "old"
+      @node.save
+
+      get "/svc/store_metadata/#{@node.id}?remove[]=x"
+      last_response.status.should == 204
+
+      node = Node[@node.id]
+      node.metadata.should == { }
+    end
+
+    it "should update and remove values"do
+      @node.metadata["x"] = "old"
+      @node.save
+
+      get "/svc/store_metadata/#{@node.id}?remove[]=x&a=v1"
+      last_response.status.should == 204
+
+      node = Node[@node.id]
+      node.metadata.should == { "a" => "v1" }
     end
   end
 

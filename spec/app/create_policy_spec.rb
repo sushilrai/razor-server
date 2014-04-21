@@ -5,10 +5,13 @@ describe "create policy command" do
   include Rack::Test::Methods
 
   let(:app) { Razor::App }
+  before :each do
+    authorize 'fred', 'dead'
+  end
 
   context "/api/commands/create-policy" do
     before :each do
-      use_installer_fixtures
+      use_task_fixtures
       header 'content-type', 'application/json'
     end
 
@@ -22,11 +25,10 @@ describe "create policy command" do
       # use them in these tests
       { :name          => "test policy",
         :repo          => { "name" => repo.name },
-        :installer     => { "name" => "some_os" },
+        :task        => { "name" => "some_os" },
         :broker        => { "name" => broker.name },
         :hostname      => "host${id}.example.com",
         :root_password => "geheim",
-        :rule_number   => 100,
         :tags          => [ { "name" => tag1.name } ]
       }
     end
@@ -63,6 +65,47 @@ describe "create policy command" do
       create_policy
 
       Razor::Data::Policy[:name => policy_hash[:name]].should be_an_instance_of Razor::Data::Policy
+    end
+
+    context "ordering" do
+      before(:each) do
+        @p1 = Fabricate(:policy)
+        @p2 = Fabricate(:policy)
+      end
+
+      def check_order(where, policy, list)
+        policy_hash[where.to_s] = { "name" => policy.name } unless where.nil?
+        create_policy
+        last_response.status.should == 202
+        p = Razor::Data::Policy[:name => policy_hash[:name]]
+
+        list = list.map { |x| x == :_ ? p.id : x.id }
+        Policy.all.map { |p| p.id }.should == list
+      end
+
+      it "should append to the policy list by default" do
+        check_order nil, nil, [@p1, @p2, :_]
+      end
+
+      describe 'before' do
+        it "p1 creates at the head of the table" do
+          check_order(:before, @p1, [:_, @p1, @p2])
+        end
+
+        it "p2 goes between p1 and p2" do
+          check_order(:before, @p2, [@p1, :_, @p2])
+        end
+      end
+
+      describe "after" do
+        it "p1 goes between p1 and p2" do
+          check_order(:after, @p1, [@p1, :_, @p2])
+        end
+
+        it "p2 goes to the end of the table" do
+          check_order(:after, @p2, [@p1, @p2, :_])
+        end
+      end
     end
   end
 end

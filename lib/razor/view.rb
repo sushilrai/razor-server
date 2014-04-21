@@ -50,7 +50,7 @@ module Razor
 
       view_object_hash(policy).merge({
         :repo => view_object_reference(policy.repo),
-        :installer => view_object_reference(policy.installer),
+        :task => view_object_reference(policy.task),
         :broker => view_object_reference(policy.broker),
         :enabled => !!policy.enabled,
         :max_count => policy.max_count != 0 ? policy.max_count : nil,
@@ -58,16 +58,25 @@ module Razor
           :hostname_pattern => policy.hostname_pattern,
           :root_password => policy.root_password,
         },
-        :rule_number => policy.rule_number,
         :tags => policy.tags.map {|t| view_object_reference(t) }.compact,
-      })
+        :node_metadata => policy.node_metadata || {},
+        :nodes => { :id => view_object_url(policy) + "/nodes",
+                    :count => policy.nodes.count,
+                    :name => "nodes" }
+      }).delete_if {|k,v| v.nil? or ( v.is_a? Hash and v.empty? ) }
     end
 
     def tag_hash(tag)
       return nil unless tag
 
       view_object_hash(tag).merge({
-        :rule => tag.rule
+        :rule => tag.rule,
+        :nodes => { :id => view_object_url(tag) + "/nodes",
+                    :count => tag.nodes.count,
+                    :name => "nodes" },
+        :policies => { :id => view_object_url(tag) + "/policies",
+                       :count => tag.policies.count,
+                       :name => "policies" }
       })
     end
 
@@ -85,34 +94,41 @@ module Razor
       view_object_hash(broker).merge(
         :spec            => compose_url('spec', 'object', 'broker'),
         :configuration   => broker.configuration,
-        :"broker-type"   => broker.broker_type)
+        :"broker-type"   => broker.broker_type,
+        :policies        => { :id => view_object_url(broker) + "/policies",
+                              :count => broker.policies.count,
+                              :name => "policies" })
     end
 
-    def installer_hash(installer)
-      return nil unless installer
+    def task_hash(task)
+      return nil unless task
 
-      if installer.base
-        base = { :base => view_object_reference(installer.base) }
+      if task.base
+        base = { :base => view_object_reference(task.base) }
       else
         base = {}
       end
 
       # FIXME: also return templates, requires some work for file-based
-      # installers
-      view_object_hash(installer).merge(base).merge({
+      # tasks
+      view_object_hash(task).merge(base).merge({
         :os => {
-          :name => installer.os,
-          :version => installer.os_version }.delete_if {|k,v| v.nil? },
-        :description => installer.description,
-        :boot_seq => installer.boot_seq
+          :name => task.os,
+          :version => task.os_version }.delete_if {|k,v| v.nil? },
+        :description => task.description,
+        :boot_seq => task.boot_seq
       }).delete_if {|k,v| v.nil? }
+    end
+
+    def ts(date)
+      date ? date.xmlschema : nil
     end
 
     def node_hash(node)
       return nil unless node
-      # @todo lutter 2013-09-09: if there is a policy, use boot_count to
-      # provide a useful status about progress
-      last_checkin_s = node.last_checkin.xmlschema if node.last_checkin
+
+      boot_stage = node.policy ? node.task.boot_template(node) : nil
+
       view_object_hash(node).merge(
         :hw_info       => node.hw_hash,
         :dhcp_mac      => node.dhcp_mac,
@@ -121,11 +137,33 @@ module Razor
                             :name => "log" },
         :tags          => node.tags.map { |t| view_object_reference(t) },
         :facts         => node.facts,
+        :metadata      => node.metadata,
+        :state         => {
+          :installed    => node.installed,
+          :installed_at => ts(node.installed_at),
+          :stage        => boot_stage,
+        }.delete_if { |k,v| v.nil? },
+        :power => {
+          :desired_power_state        => node.desired_power_state,
+          :last_known_power_state     => node.last_known_power_state,
+          :last_power_state_update_at => node.last_power_state_update_at
+        }.delete_if { |k,v| v.nil? },
         :hostname      => node.hostname,
         :root_password => node.root_password,
-        :ip_address    => node.ip_address,
-        :last_checkin  => last_checkin_s
-      ).delete_if {|k,v| v.nil? }
+        :last_checkin  => ts(node.last_checkin)
+      ).delete_if {|k,v| v.nil? or ( v.is_a? Hash and v.empty? ) }
+    end
+
+    def collection_view(cursor, name)
+      perm = "query:#{name}"
+      cursor = cursor.all if cursor.respond_to?(:all)
+      items = cursor.
+        map {|t| view_object_reference(t)}.
+        select {|o| check_permissions!("#{perm}:#{o[:name]}") rescue nil }
+      {
+        "spec" => spec_url("collections", name),
+        "items" => items
+      }.to_json
     end
   end
 end

@@ -129,16 +129,16 @@ The `delete-repo` command accepts a single repo name:
       "name": "fedora16"
     }
 
-### Create installer
+### Create task
 
-Razor supports both installers stored in the filesystem and installers
+Razor supports both tasks stored in the filesystem and tasks
 stored in the database; for development, it is highly recommended that you
-store your installers in the filesystem. Details about that can be found
-[on the Wiki](https://github.com/puppetlabs/razor-server/wiki/Writing-installers)
+store your tasks in the filesystem. Details about that can be found
+[on the Wiki](https://github.com/puppetlabs/razor-server/wiki/Writing-tasks)
 
-For production setups, it is usually better to store your installers in the
-database. To create an installer, clients post the following to the
-`/spec/create_installer` URL:
+For production setups, it is usually better to store your tasks in the
+database. To create a task, clients post the following to the
+`/spec/create_task` URL:
 
     {
       "name": "redhat6",
@@ -157,7 +157,7 @@ database. To create an installer, clients post the following to the
 
 The possible properties in the request are:
 
-name       | The name of the installer; must be unique
+name       | The name of the task; must be unique
 os         | The name of the OS; mandatory
 os_version | The version of the operating system
 description| Human-readable description
@@ -170,7 +170,10 @@ To create a broker, clients post the following to the `create-broker` URL:
 
     {
       "name": "puppet",
-      "configuration": { "server": "puppet.example.org", "version": "3.0.0" },
+      "configuration": {
+         "server": "puppet.example.org",
+         "environment": "production"
+      },
       "broker-type": "puppet"
     }
 
@@ -179,6 +182,18 @@ The `broker-type` must correspond to a broker that is present on the
 
 The permissible settings for the `configuration` hash depend on the broker
 type and are declared in the broker type's `configuration.yaml`.
+
+### Delete broker
+
+A broker can be deleted by posting its name to the `/spec/delete_broker`
+command:
+
+    {
+      "name": "small",
+    }
+
+If the broker is used by a policy, the attempt to delete the broker will
+fail.
 
 ### Create tag
 
@@ -230,19 +245,24 @@ will return with status code 400.
     {
       "name": "a policy",
       "repo": { "name": "some_repo" },
-      "installer": { "name": "redhat6" },
+      "task": { "name": "redhat6" },
       "broker": { "name": "puppet" },
       "hostname": "host${id}.example.com",
       "root_password": "secret",
       "max_count": "20",
-      "line_number": "100"
+      "before"|"after": { "name": "other policy" },
+      "node_metadata": { "key1": "value1", "key2": "value2" },
       "tags": [{ "name": "existing_tag"},
                { "name": "new_tag", "rule": ["=", "dollar", "dollar"]}]
     }
 
-Policies are matched in the order of ascending line numbers.
+The overall list of policies is ordered, and polcies are considered in that
+order. When a new policy is created, the entry `before` or `after` can be
+used to put the new policy into the table before or after another
+policy. If neither `before` or `after` are specified, the policy is
+appended to the policy table.
 
-Tags, brokers, installers and repos are referenced by their name. Tags can
+Tags, brokers, tasks and repos are referenced by their name. Tags can
 also be created by providing a rule; if a tag with that name already
 exists, the rule must be equal to the rule of the existing tag.
 
@@ -255,6 +275,26 @@ to this policy at the most. This can either be set to `nil`, indicating
 that an unbounded number of nodes can be bound to this policy, or a
 positive integer to set an upper bound.
 
+The `node_metadata` allows a policy to apply metadata to a node when it
+binds.  This is NON AUTHORITIVE in that it will not replace existing
+metadata on the node with the same keys it will only add keys that are
+missing.
+
+### Move policy
+
+This command makes it possible to change the order in which policies are
+considered when matching against nodes. To put an existing policy into a
+different place in the policy table, use the `move-policy` command with a
+body like:
+
+    {
+      "name": "a policy",
+      "before"|"after": { "name": "other policy" }
+    }
+
+This will change the policy table so that `a policy` will appear before or
+after the policy `other policy`.
+
 ### Enable/disable policy
 
 Policies can be enabled or disabled. Only enabled policies are used when
@@ -265,6 +305,48 @@ accept the same body, consisting of the name of the policy in question:
     {
       "name": "a policy"
     }
+
+### Modify the max-count for a policy
+
+The command `modify-policy-max-count` makes it possible to manipulate how
+many nodes can be bound to a specific policy at the most. The body of the
+request should be of the form:
+
+    {
+      "name": "a policy"
+      "max-count": new-count
+    }
+
+The `new-count` can be an integer, which must be larger than the number of
+nodes that are currently bound to the policy, or `null` to make the policy
+unbounded
+
+### Add/remove tags to/from Policy
+
+You can add or remove tags from policies with `add-policy-tag` and
+ `remove-policy-tag` respectively.  In both cases supply the name of a
+policy and the name of the tag.  When adding a tag, you can specify an
+existing tag, or create a new one by supplying a name and rule for the
+new tag:
+
+    {
+      "name": "a-policy-name",
+      "tag" : "a-tag-name",
+      "rule": "new-match-expression" #Only for `add-policy-tag`
+    }
+
+### Delete policy
+
+Policies can be deleted with the `delete-policy` command.  It accepts the
+name of a single policy:
+
+    {
+      'name': 'my-policy'
+    }
+
+Note that this does not affect the `installed` status of a node, and
+therefore won't, by itself, cause a node to be bound to another policy upon
+reboot.
 
 ### Delete node
 
@@ -278,15 +360,180 @@ command. It accepts the name of a single node:
 Of course, if that node boots again at some point, it will be automatically
 recreated.
 
-### Unbind node
+### Reinstall node
 
-Unbinding a node removes its association with a policy; once unbound, the
-node will boot back into the Microkernel and go through discovery, tag
-matching and possibly be bound to another policy. Specify which node to
-unbind by sending the node's name in the body of the request
+This command removes a node's association with any policy and clears its
+`installed` flag; once the node reboots, it will boot back into the
+Microkernel and go through discovery, tag matching and possibly be bound to
+another policy. This command does not change its metadata or facts. Specify
+which node to unbind by sending the node's name in the body of the request
 
     {
       'name': 'node17'
+    }
+
+### Set node IPMI credentials
+
+Razor can store IPMI credentials on a per-node basis.  These are the hostname
+(or IP address), the username, and the password to use when contacting the
+BMC/LOM/IPMI lan or lanplus service to check or update power state and other
+node data.
+
+This is an atomic operation: all three data items are set or reset in a single
+operation.  Partial updates must be handled client-side.  This eliminates
+conflicting update and partial update combination surprises for users.
+
+The structure of a request is:
+
+    {
+      'name': 'node17',
+      'ipmi-hostname': 'bmc17.example.com',
+      'ipmi-username': null,
+      'ipmi-password': 'sekretskwirrl'
+    }
+
+The various IPMI fields can be null (representing no value, or the NULL
+username/password as defined by IPMI), and if omitted are implicitly set to
+the NULL value.
+
+You *must* provide an IPMI hostname if you provide either a username or
+password, since we only support remote, not local, communication with the
+IPMI target.
+
+### Reboot node
+
+Razor can request a node reboot through IPMI, if the node has IPMI credentials
+associated.  Both hard (power cycle) and soft (request OS reboot through
+ACPI).  This uses the standard IPMI mechanisms, and has the same limitations
+-- including that soft shutdown support may be implemented by simulating error
+states such as overtemperature alerts by some vendors.
+
+This is applied in the background, and will run as soon as available execution
+slots are available for the task -- IPMI communication has some generous
+internal rate limits to prevent it overwhelming the machine.
+
+This background process is persistent: if you restart the Razor server before
+the command is executed, it will remain in the queue and the operation will
+take place after the server restarts.  There is no time limit on this at
+this time.
+
+Multiple commands can be queued, and they will be processed sequentially, with
+no limitation on how frequently a node can be rebooted.
+
+If the IPMI request fails (that is: ipmitool reports it is unable to
+communicate with the node) the request will be retried.  No detection of
+actual results is included, though, so you may not know if the command is
+delivered and fails to reboot the system.
+
+This is not integrated with the IPMI power state monitoring, and you may not
+see power transitions in the record, or through the node object if polling.
+
+The format of the command is:
+
+    {
+      "node": "node1",
+      "hard": false
+    }
+
+The `node` field is the name of the node to operate on.
+
+The `hard` field is a boolean, or absent.  If it is present, and true, the
+reboot will be hard (eg: full power cycle, without any OS involvement).
+Otherwise it will be a soft reboot.  (Soft reboots require the OS to be
+listening, and may not work for all platforms, OS combinations, and
+especially, during installer or firmware boot states.)
+
+The RBAC pattern for this command is:
+`reboot-node:${node}:${hard ? 'hard' : 'soft'}`
+
+
+### Set node desired power state
+
+In addition to monitoring power, Razor can enforce node power state.
+This command allows a desired power state to be set for a node, and if the
+node is observed to be in a different power state an IPMI command will be
+issued to change to the desired state.
+
+The format of the command is:
+
+    {
+      "name": "node1234",
+      "to":   "on"|"off"|null
+    }
+
+The `name` field identifies the node to change the setting on.
+
+The `to` field contains the desired power state to set.  Valid values are
+`on`, `off`, or `null` (the JSON NULL/nil value), which reflect "power on",
+"power off", and "do not enforce power state" respectively.
+
+Power state is enforced every time it is observed; by default this happens
+on a scheduled basis in the background every few minutes.
+
+
+### Modify node metadata
+
+Node metadata is similar to a nodes facts except metadata is what the
+administrators tell Razor about the node rather than what the node tells
+Razor about itself.
+
+Metadata is a collection of key => value pairs (like facts).  Use the
+`modify-node-metadata` command to add/update, remove or clear a node's
+metadata. The request should look like:
+
+    {
+        'node': 'node1',
+        'update': {                         # Add or update these keys
+            'key1': 'value1',
+            'key2': 'value2',
+            ...
+        }
+        'remove': [ 'key3', 'key4', ... ],  # Remove these keys
+        'no_replace': true                  # Do not replace keys on
+                                            # update. Only add new keys
+    }
+
+or
+
+    {
+        'node': 'node1',
+        'clear': true                       # Clear all metadata
+    }
+
+As above, multiple update and/or removes can be done in the one command,
+however, clear can only be done on its own (it doesnt make sense to
+update some details and then clear everything).  An error will also be
+returned if an attempt is made to update and remove the same key.
+
+### Update node metadata
+
+The `update-node-metadata` command is a shortcut to `modify-node-metadata`
+that allows for updating single keys on the command line or with a GET
+request with a simple data structure that looks like.
+
+    {
+        'node'      : 'mode1',
+        'key'       : 'my_key',
+        'value'     : 'my_val',
+        'no_replace': true       #Optional. Will not replace existing keys
+    }
+
+### Remove Node Metadata
+
+The `remove-node-metadata` command is a shortcut to `modify-node-metadata`
+that allows for removing a single key OR all keys only on the command
+like or with a GET request with a simple datastructure that looks like:
+
+    {
+        'node' : 'node1',
+        'key'  : 'my_key',
+    }
+
+or
+
+    {
+        'node' : 'node1',
+        'all'  : true,     # Removes all keys
     }
 
 ## Collections

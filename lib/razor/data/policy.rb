@@ -6,21 +6,68 @@ module Razor::Data
     many_to_many :tags
     many_to_one  :broker
 
-    def installer
-      Razor::Installer.find(installer_name)
+    plugin :list, :field => :rule_number
+    plugin :serialization, :json, :node_metadata
+
+    def before_validation
+      # @todo lutter 2014-01-15: the list plugin initializes +rule_number+
+      # too late (in a before_create hook) at which point the not null
+      # validation for rule_number has already failed
+      self.rule_number ||= Policy.dataset.max(:rule_number).to_i + 1
+      super
+    end
+
+    # Put this policy into a different place in the policy table; +where+
+    # can be either +before+ or +after+, +other+ must be a policy.
+    def move(where, other)
+      raise "Save object first. List plugin can not move unsaved objects" if new?
+      if where.to_sym == :before
+        move_to(other.position_value)
+      elsif where.to_sym == :after
+        lp = last_position
+        if other.position_value == lp
+          move_to(lp, lp)
+        else
+          move_to(other.position_value+1, lp)
+        end
+      else
+        raise "the where parameter must be either 'before' or 'after'"
+      end
+    end
+
+    # This is a hack around the fact that the auto_validates plugin does
+    # not play nice with the JSON serialization plugin (the serializaton
+    # happens in the before_save hook, which runs after validation)
+    #
+    # To avoid spurious error messages, we tell the validation machinery to
+    # expect a Hash resp.
+    #
+    # Add the fields to be serialized to the 'serialized_fields' array
+    #
+    # FIXME: Figure out a way to address this issue upstream
+    def schema_type_class(k)
+      if [ :node_metadata ].include?(k)
+        Hash
+      else
+        super
+      end
+    end
+
+    def task
+      Razor::Task.find(task_name)
     end
 
     def validate
       super
 
-      # Because we allow installers in the file system, we do not have a fk
-      # constraint on +installer_name+; this check only helps spot simple
+      # Because we allow tasks in the file system, we do not have a fk
+      # constraint on +task_name+; this check only helps spot simple
       # typos etc.
       begin
-        self.installer
-      rescue Razor::InstallerNotFoundError
-        errors.add(:installer_name,
-                   "installer '#{installer_name}' does not exist")
+        self.task
+      rescue Razor::TaskNotFoundError
+        errors.add(:task_name,
+                   "task '#{task_name}' does not exist")
       end
     end
 

@@ -51,17 +51,21 @@ class Razor::Matcher
       }.freeze
 
     ATTRS = {
-        "and"  => {:expects => [Boolean],         :returns => Boolean },
-        "or"   => {:expects => [Boolean],         :returns => Boolean },
-        "fact" => {:expects => [[String], Mixed], :returns => Mixed   },
-        "eq"   => {:expects => [Mixed],           :returns => Boolean },
-        "neq"  => {:expects => [Mixed],           :returns => Boolean },
-        "in"   => {:expects => [Mixed],           :returns => Boolean },
-        "num"  => {:expects => [Mixed],           :returns => Number  },
-        "gte"  => {:expects => [[Numeric]],       :returns => Boolean },
-        "gt"   => {:expects => [[Numeric]],       :returns => Boolean },
-        "lte"  => {:expects => [[Numeric]],       :returns => Boolean },
-        "lt"   => {:expects => [[Numeric]],       :returns => Boolean },
+        "and"      => {:expects => [Boolean],         :returns => Boolean },
+        "or"       => {:expects => [Boolean],         :returns => Boolean },
+        "not"      => {:expects => [Boolean],         :returns => Boolean },
+        "fact"     => {:expects => [[String], Mixed], :returns => Mixed   },
+        "metadata" => {:expects => [[String], Mixed], :returns => Mixed   },
+        "tag"      => {:expects => [[String]],        :returns => Mixed   },
+        "state"    => {:expects => [[String], [String]], :returns => Mixed   },
+        "eq"       => {:expects => [Mixed],           :returns => Boolean },
+        "neq"      => {:expects => [Mixed],           :returns => Boolean },
+        "in"       => {:expects => [Mixed],           :returns => Boolean },
+        "num"      => {:expects => [Mixed],           :returns => Number  },
+        "gte"      => {:expects => [[Numeric]],       :returns => Boolean },
+        "gt"       => {:expects => [[Numeric]],       :returns => Boolean },
+        "lte"      => {:expects => [[Numeric]],       :returns => Boolean },
+        "lt"       => {:expects => [[Numeric]],       :returns => Boolean },
       }.freeze
 
     # FIXME: This is pretty hackish since Ruby semantics will shine through
@@ -78,16 +82,34 @@ class Razor::Matcher
       args.any? { |a| a }
     end
 
+    def not(*args)
+      not args[0]
+    end
+
     # Returns the fact named #{args[0]}
     #
     # If no fact with the specified name exists, args[1] is returned if given.
     # If no fact exists and args[1] is not given, an ArgumentError is raised.
     def fact(*args)
-      case
-      when @values["facts"].include?(args[0]) then @values["facts"][args[0]]
-      when args.length > 1 then args[1]
-      else raise RuleEvaluationError.new "Couldn't find fact '#{args[0]}'"
+      value_lookup("facts", args)
+    end
+
+    def metadata(*args)
+      value_lookup("metadata", args)
+    end
+
+    def tag(*args)
+      unless t = Razor::Data::Tag[:name => args[0]]
+        raise RuleEvaluationError.new "Tag '#{args[0]}' does not exist"
       end
+      # This is a bit ugly: we really just want to call t.match? but that
+      # takes a node, and we only have the values Hash here. So we peek a
+      # little too deeply into the tag.
+      t.matcher.match?(@values)
+    end
+
+    def state(*args)
+      value_lookup("state", args)
     end
 
     def eq(*args)
@@ -134,6 +156,18 @@ class Razor::Matcher
 
     def lt(*args)
       args[0] < args[1]
+    end
+
+    private
+    def value_lookup(map_name, args)
+      map = @values[map_name]
+      case
+      when map.include?(args[0]) then map[args[0]]
+      when args.length > 1 then args[1]
+      else
+        name = map_name == "facts" ? "fact" : map_name
+        raise RuleEvaluationError.new "Couldn't find #{name} '#{args[0]}' and no default supplied"
+      end
     end
   end
 

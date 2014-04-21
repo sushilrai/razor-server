@@ -7,12 +7,12 @@ end
 def random_mac
   # not strictly a legal MAC, but the shape is correct.  (eg: could be a
   # broadcast MAC, or some other invalid value.)
-  6.times.map { Random.rand(256).to_s(16) }.join("-")
+  6.times.map { Random.rand(256).to_s(16).downcase }.join("-")
 end
 
 ASSET_CHARS=('A'..'Z').to_a + ('0'..'9').to_a
 def random_asset
-  ASSET_CHARS.sample(6).join
+  ASSET_CHARS.sample(6).join.downcase
 end
 
 Fabricator(:broker, :class_name => Razor::Data::Broker) do
@@ -24,6 +24,14 @@ Fabricator(:broker, :class_name => Razor::Data::Broker) do
   end
 end
 
+Fabricator(:broker_with_policy, from: :broker) do
+  after_build do |broker, _|
+    policy = Fabricate(:policy)
+    broker.save
+    policy.broker = broker
+    policy.save
+  end
+end
 
 Fabricator(:repo, :class_name => Razor::Data::Repo) do
   name      { Faker::Commerce.product_name + " #{Fabricate.sequence}" }
@@ -31,7 +39,7 @@ Fabricator(:repo, :class_name => Razor::Data::Repo) do
 end
 
 
-Fabricator(:installer, :class_name => Razor::Data::Installer) do
+Fabricator(:task, :class_name => Razor::Data::Task) do
   name          { Faker::Commerce.product_name + " #{Fabricate.sequence}" }
   os            { Faker::Commerce.product_name }
   os_version    { random_version }
@@ -39,26 +47,42 @@ Fabricator(:installer, :class_name => Razor::Data::Installer) do
   boot_seq      {{'default' => 'boot_local'}}
 end
 
+Fabricator(:tag, :class_name => Razor::Data::Tag) do
+  name { Faker::Commerce.product_name + " #{Fabricate.sequence}" }
+  rule { ["=", "1", "1"] }
+end
+
 Fabricator(:policy, :class_name => Razor::Data::Policy) do
   name             { Faker::Commerce.product_name + " #{Fabricate.sequence}" }
   enabled          true
-  installer_name   { Fabricate(:installer).name }
+  task_name      { Fabricate(:task).name }
   hostname_pattern 'host${id}.example.org'
   root_password    { Faker::Internet.password }
-  rule_number      { Fabricate.sequence(:razor_data_policy_rule_number, 100) }
 
   repo
   broker
 end
 
+Fabricator(:policy_with_tag, from: :policy) do
+  tags(count: 3) { Fabricate(:tag) }
+end
 
 Fabricator(:node, :class_name => Razor::Data::Node) do
   hw_info { [ "mac=#{random_mac}", "asset=#{random_asset}" ] }
 end
 
+Fabricator(:node_with_ipmi, class_name: Razor::Data::Node, from: :node) do
+  ipmi_hostname { Faker::Internet.domain_name }
+end
+
 Fabricator(:node_with_facts, :class_name => Razor::Data::Node) do
   hw_info { [ "mac=#{random_mac}", "asset=#{random_asset}" ] }
   facts   { { "f1" => "a" } }
+end
+
+Fabricator(:node_with_metadata, :class_name => Razor::Data::Node) do
+  hw_info  { [ "mac=#{random_mac}", "asset=#{random_asset}" ] }
+  metadata { { "m1" => "a" } }
 end
 
 Fabricator(:bound_node, from: :node) do
@@ -78,7 +102,22 @@ Fabricator(:bound_node, from: :node) do
     data
   end
 
-  ip_address { Faker::Internet.ip_v4_address }
+  metadata do
+    data = { }
+    # 25% of nodes will have an IP generated
+    data["ip"] = Faker::Internet.ip_v4_address if Random.rand(4) == 3
+    20.times do
+      data[Faker::Lorem.word] = case Random.rand(4)
+                                when 0 then Faker::Lorem.word
+                                when 1 then Random.rand(2**34).to_s
+                                when 2 then random_version
+                                when 3 then 'true'
+                                else raise "unexpected random number!"
+                                end
+    end
+    data
+  end
+
   boot_count { Random.rand(10) }
 
   # normally the node would be created before binding, so we always have an ID
@@ -97,9 +136,4 @@ Fabricator(:bound_node, from: :node) do
     node.hostname = node.policy.hostname_pattern.gsub('${id}', node.id.to_s)
     node.save
   end
-end
-
-Fabricator(:tag, :class_name => Razor::Data::Tag) do
-  name { Faker::Commerce.product_name + " #{Fabricate.sequence}" }
-  rule { ["=", "1", "1"] }
 end
