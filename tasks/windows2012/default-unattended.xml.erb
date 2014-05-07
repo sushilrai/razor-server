@@ -30,7 +30,7 @@
       <UserData>
         <AcceptEula>true</AcceptEula>
         <ProductKey>
-          <Key>AAAAA-BBBBB-CCCCC-DDDDD-EEEEE</Key>  <!-- set CD Key here -->
+          <Key><%= os.license %></Key>  <!-- set CD Key here -->
         </ProductKey>
       </UserData>
       <ImageInstall>
@@ -39,7 +39,7 @@
           <InstallFrom>
             <MetaData wcm:action="add">
               <Key>/IMAGE/NAME</Key>
-              <Value>Windows Server 2012 SERVERSTANDARD</Value>
+              <Value><%= os.version %></Value>
             </MetaData>
           </InstallFrom>
 <!-- Windows image name -->
@@ -128,13 +128,13 @@
 <!--pecify Credentials to use to join the domain -->
         <Credentials>
           <Domain>yourDomainForCredential</Domain>
-          <Password>SomePassword</Password>
           <Username>Administrator</Username>
+          <Password>SomePassword</Password>
         </Credentials>
         <JoinDomain>YourDomain</JoinDomain> <!-- example dell.com -->
         <UnsecureJoin>false</UnsecureJoin>
       </Identification>
     </component>
   </settings>
-  <cpi:offlineImage cpi:source="wim:c:/temp/install.wim#Windows Server 2012 SERVERSTANDARD" xmlns:cpi="urn:schemas-microsoft-com:cpi" /> 
+  <cpi:offlineImage cpi:source="wim:c:/temp/install.wim#<%= os.version %>" xmlns:cpi="urn:schemas-microsoft-com:cpi" /> 
 </unattend>

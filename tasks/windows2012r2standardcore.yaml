@@ -1,0 +1,4 @@
+---
+os_version: Windows_Server_2012_R2_SERVERSTANDARDCORE
+description: Microsoft Windows 2012 R2 Standard Core
+base: windows2012
