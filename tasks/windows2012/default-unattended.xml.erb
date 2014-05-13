@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<% require 'asm/cipher'
+   require 'asm/util' %>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
   <servicing></servicing>
   <settings pass="windowsPE">
@@ -66,7 +68,7 @@
     <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <UserAccounts>
         <AdministratorPassword>
-          <Value><%= require 'asm/cipher'; ASM::Cipher.decrypt_string(node.root_password) %></Value>
+          <Value><%= ASM::Cipher.decrypt_string(node.root_password) %></Value>
           <PlainText>true</PlainText>
         </AdministratorPassword>
       </UserAccounts>
@@ -117,7 +119,7 @@
         <RunSynchronousCommand wcm:action="add">
           <Description>Install Puppet Agent from razor server</Description>
           <Order>2</Order>
-          <Path>msiexec /i \\<%= URI.parse(repo_url).host %>\razor\puppet-agent\windows\puppet-3.3.2.msi /qn PUPPET_MASTER_SERVER=&quot;dellasm&quot; PUPPET_AGENT_CERTNAME=&quot;<%=  require 'asm/util'; ASM::Util.hostname_to_certname(node.hostname.split('.').first) %>&quot; PUPPET_AGENT_ACCOUNT_USER=Administrator PUPPET_AGENT_ACCOUNT_PASSWORD=&quot;<%= ASM::Cipher.decrypt_string(node.root_password) %>&quot;</Path>
+          <Path>msiexec /i \\<%= URI.parse(repo_url).host %>\razor\puppet-agent\windows\puppet-3.3.2.msi /qn PUPPET_MASTER_SERVER=&quot;dellasm&quot; PUPPET_AGENT_CERTNAME=&quot;<%= ASM::Util.hostname_to_certname(node.hostname.split('.').first) %>&quot; PUPPET_AGENT_ACCOUNT_USER=Administrator PUPPET_AGENT_ACCOUNT_PASSWORD=&quot;<%= ASM::Cipher.decrypt_string(node.root_password) %>&quot;</Path>
         </RunSynchronousCommand>
       </RunSynchronous>
     </component>
@@ -125,7 +127,7 @@
 <!-- Include the follwoing if you want the system to join a domain -->
     <component name="Microsoft-Windows-UnattendedJoin" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <Identification>
-<!--pecify Credentials to use to join the domain -->
+<!-- Specify Credentials to use to join the domain -->
         <Credentials>
           <Domain>yourDomainForCredential</Domain>
           <Username>Administrator</Username>
