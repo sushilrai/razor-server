@@ -23,7 +23,7 @@ end
 settings = load_file('windows_settings.yaml', :parse_yaml=>true)
 
 version = node.task.os_version.gsub('_', ' ')
-version = DEFAULT_OS if version == 2012
+version = DEFAULT_OS if version == '2012'
 os = OpenStruct.new
 os.version = version
 os.license = settings[version]['license']

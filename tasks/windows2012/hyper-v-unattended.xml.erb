@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<% require 'asm/cipher'
+   require 'asm/util'  -%>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
   <servicing/>
   <settings pass="windowsPE">
@@ -100,7 +102,7 @@
       <RunSynchronousCommand wcm:action="add">
         <Description>Install Puppet Agent from razor server</Description>
         <Order>2</Order>
-        <Path>msiexec /i \\<%= URI.parse(repo_url).host %>\razor\puppet-agent\windows\puppet-3.3.2.msi /qn PUPPET_MASTER_SERVER=&quot;dellasm&quot; PUPPET_AGENT_CERTNAME=&quot;<%= require 'asm/util'; ASM::Util.hostname_to_certname(node.hostname.split('.').first) %>&quot; PUPPET_AGENT_ACCOUNT_USER=Administrator PUPPET_AGENT_ACCOUNT_PASSWORD=&quot;<%= require 'asm/cipher' ; ASM::Cipher.decrypt_string(node.root_password) %>&quot;</Path> 
+        <Path>msiexec /i \\<%= URI.parse(repo_url).host %>\razor\puppet-agent\windows\puppet-3.3.2.msi /qn PUPPET_MASTER_SERVER=&quot;dellasm&quot; PUPPET_AGENT_CERTNAME=&quot;<%= ASM::Util.hostname_to_certname(node.hostname.split('.').first) %>&quot; PUPPET_AGENT_ACCOUNT_USER=Administrator PUPPET_AGENT_ACCOUNT_PASSWORD=&quot;<%= ASM::Cipher.decrypt_string(node.root_password) %>&quot;</Path> 
       </RunSynchronousCommand>
 
       <RunSynchronousCommand wcm:action="add">
@@ -121,7 +123,7 @@
       </Display>
       <AutoLogon>
         <Password>
-          <Value><%=require 'asm/cipher'; ASM::Cipher.decrypt_string(node.root_password)%></Value>
+          <Value><%= ASM::Cipher.decrypt_string(node.root_password)%></Value>
           <PlainText>true</PlainText>
         </Password>
         <Enabled>true</Enabled>
@@ -130,7 +132,7 @@
       </AutoLogon>
       <UserAccounts>
         <AdministratorPassword>
-          <Value><%=require 'asm/cipher'; ASM::Cipher.decrypt_string(node.root_password)%></Value>
+          <Value><%= ASM::Cipher.decrypt_string(node.root_password)%></Value>
           <PlainText>true</PlainText>
         </AdministratorPassword>
       </UserAccounts>      
