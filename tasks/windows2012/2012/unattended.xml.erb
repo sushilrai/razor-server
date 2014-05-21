@@ -21,14 +21,13 @@ def load_file(filename, opt={:parse_yaml => false})
 end
 
 settings = load_file('windows_settings.yaml', :parse_yaml=>true)
+options = load_file("#{node.hostname}.yaml", :parse_yaml => true)
 
 version = node.task.os_version.gsub('_', ' ')
 version = DEFAULT_OS if version == '2012'
 os = OpenStruct.new
 os.version = version
-os.license = settings[version]['license']
-
-options = load_file("#{node.hostname}.yaml", :parse_yaml => true)
+os.license = options['product_key'] || settings[windows_version]['license']
 
 if options['os_type'] == 'hyperv'
   content = load_file('hyper-v-unattended.xml.erb')
