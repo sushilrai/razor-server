@@ -60,7 +60,7 @@
           <InstallFrom>
             <MetaData wcm:action="add">
               <Key>/IMAGE/NAME</Key>
-              <Value>Windows Server 2012 R2 SERVERDATACENTER</Value>
+              <Value><%= os.version %></Value>
             </MetaData>
           </InstallFrom>
         </OSImage>
@@ -68,7 +68,7 @@
       <UserData>
         <AcceptEula>true</AcceptEula>
         <ProductKey>
-          <Key><%= options['product_key'] %></Key>
+          <Key><%= options['product_key'] || os.license %></Key>
           <WillShowUI>OnError</WillShowUI>
         </ProductKey>
       </UserData>
@@ -138,5 +138,4 @@
       </UserAccounts>      
     </component>
   </settings>
-  <cpi:offlineImage cpi:source="wim:c:/users/Administrator/desktop/unattend_install/ws2012/sources/install.wim#Windows Server 2012 SERVERDATACENTER" xmlns:cpi="urn:schemas-microsoft-com:cpi"/>
 </unattend>
