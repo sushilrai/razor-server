@@ -31,9 +31,6 @@
       </DiskConfiguration>
       <UserData>
         <AcceptEula>true</AcceptEula>
-        <ProductKey>
-          <Key><%= os.license %></Key>  <!-- set CD Key here -->
-        </ProductKey>
       </UserData>
       <ImageInstall>
         <OSImage>
@@ -85,6 +82,7 @@
       <OEMInformation>
         <HelpCustomized>false</HelpCustomized>
       </OEMInformation>
+      <ProductKey><%= os.license %></ProductKey>
       <ComputerName><%= node.hostname.split(".").first %></ComputerName>
       <TimeZone>Central Standard Time</TimeZone>
     </component>
