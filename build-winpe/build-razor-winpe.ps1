@@ -111,9 +111,13 @@ write-host ""
 # need to choose depending on the ADK version
 if($adkversion -eq 8.1) {
 @('WinPE-WMI', 'WinPE-NetFX', 'WinPE-Scripting', 'WinPE-PowerShell') | foreach {
-    write-host "installing $_ to image"
-    $pkg = join-path $packages "$_.cab"
+    $item = $_
+    write-host "installing $item to image"
+    $pkg = join-path $packages "$item.cab"
     add-windowspackage -packagepath $pkg -path $mount
+    $pkg = join-path $packages "en-us\${item}_en-us.cab"
+    add-windowspackage -packagepath $pkg -path $mount
+    
 }
 # Copy bootmgr.exe to root of winpe.wim, this is fix for ADK 8.1 & iPXE
 # not supporting compression
@@ -130,8 +134,11 @@ if($adkversion -eq 8.1) {
     }
 } else {
 @('WinPE-WMI', 'WinPE-NetFX4', 'WinPE-Scripting', 'WinPE-PowerShell3') | foreach {
-    write-host "installing $_ to image"
-    $pkg = join-path $packages "$_.cab"
+    $item = $_
+    write-host "installing $item to image"
+    $pkg = join-path $packages "$item.cab"
+    add-windowspackage -packagepath $pkg -path $mount
+    $pkg = join-path $packages "en-us\${item}_en-us.cab"
     add-windowspackage -packagepath $pkg -path $mount
 }
 }
@@ -141,11 +148,13 @@ $drivers  = join-path $cwd "Drivers"
 Add-WindowsDriver -Path $mount -Driver "$drivers" -Recurse
 Copy-Item $drivers $mount
 
-write-host "Adding dism to the image"
-$pkg = join-path $packages "WinPE-DismCmdlets.cab"
-if(Test-Path $pkg) {
+write-host "Adding PowerShell cmdlets to the image"
+@('WinPE-StorageWMI', 'WinPE-DismCmdlets') |foreach {
+    $item = $_
+    $pkg = join-path $packages "$item.cab"
     Add-WindowsPackage -PackagePath $pkg -path $mount
-    write-host "Successfully added dism to winpe"
+    $pkg = join-path $packages "en-us\${item}_en-us.cab"
+    add-windowspackage -packagepath $pkg -path $mount
 }
 
 write-host "Writing razor-client.ps1 startup PowerShell script to Winpe.wim"
@@ -212,18 +221,17 @@ write-host "*******************************************************"
 #repeat injecting the drivers for each image in the install.wim
 #right now we assume 4, but we need to programmatically figure this
 #out probably
-        @(1,2,3,4) | foreach {
-            Copy-Item $installwimsource $output
-            $wim = join-path $output "install.wim"
-#mount boot.wim
-            write-host "mounting the wim image, index $_ at the following path"
+        $wim = join-path $output "install.wim"
+        Get-WindowsImage -ImagePath $wim| foreach {
+            $image = $_."ImageName"
+            write-host "mounting $wim image $image at $mount"
             Write-Host $wim
-            mount-windowsimage -imagepath $wim -index $_ -path $mount -erroraction stop
+            mount-windowsimage -imagepath $wim -name $image -path $mount -erroraction stop
 #install driver
             Add-WindowsDriver -Path $mount -Driver "$drivers" -Recurse
 #unmount boot.wim
             dismount-windowsimage -save -path $mount -erroraction stop
-            Write-Host "Image unmounteded at index: $_" 
+            Write-Host "unmounted $wim image $image" 
         }
     } else {
         Write-Host "no installwim source"
