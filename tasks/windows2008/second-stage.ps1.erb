@@ -8,7 +8,7 @@ write-host "Razor second-stage Windows installer script starting"
 $server = '<%= URI.parse(repo_url).host %>'
 $share  = 'razor'
 $repo   = '<%= repo_url.split('/').last %>'
-$installer = "\\${server}\${share}\${repo}\setup.exe"
+$installer = "\\${server}\${share}\${repo}\sources\install.wim"
 
 write-host "fetching the unattended.xml file to feed the installer"
 $unattended_src = '<%= file_url('unattended.xml') %>'
@@ -22,12 +22,39 @@ write-host "mapping SMB share \\${server}\${share} for installer access"
 new-psdrive -name 'i' -psprovider filesystem -root "\\${server}\${share}" -persist
 start-sleep 10                  # time to settle -- needed on my VM :/
 
-write-host "starting installer ${installer}"
-dir ${installer}
-start-process "${installer}" -argumentlist "/unattend:${unattended} /noreboot" -wait
+# Unilaterally choose the first disk to put our OS on.
+# Nuke that disk from orbit first.
+write-host "Clearing the first disk"
+Clear-Disk -Number 0 -RemoveData -RemoveOEM -Confirm:$false
+write-host "Initalizing the first disk"
+Initialize-Disk -Number 0 -PartitionStyle MBR
+write-host "Creating the system partition"
+New-Partition -DiskNumber 0 -DriveLetter:S -Size:1GB -IsActive:$true | Format-Volume -FileSystem FAT32 -Confirm:$false -Force
+write-host "Creating the Windows partition"
+New-Partition -DiskNumber 0 -DriveLetter:c -UseMaximumSize | Format-Volume -FileSystem NTFS -Confirm:$false -Force -ShortFilenameSupport:$true
+
+# Expand the image we want onto the disk.
+# For now I am hardcoding this.  It should be template-ized.
+$target_os = "Windows Server 2008 R2 SERVERENTERPRISE"
+
+write-host "Imaging the Windows partition"
+Expand-WindowsImage -ApplyPath c:\ -ImagePath "${installer}" -Name $target_os -Verify -CheckIntegrity
+write-host "Setting up the Windws recovery environment"
+md S:\Recovery\WindowsRE
+cp c:\windows\system32\recovery\winre.wim S:\Recovery\WindowsRE
+
+write-host "Make the system bootable"
+bcdboot C:\Windows
+bootsect /nt60 SYS /mbr
+
+write-host "Add a boot entry for the Windows Recovery Tools"
+c:\Windows\system32\reagentc /setreimage /path S:\Recovery\WindowsRE /target C:\Windows
+
+Use-WindowsUnattend -UnattendPath "${unattended}" -NoRestart -Path c:\ -SystemDrive s: 
 
 write-host "notify Razor that the installer completed"
 (new-object System.Net.WebClient).DownloadString('<%= stage_done_url("finished") %>')
+
 
 write-host "restarting the system to complete installation"
 restart-computer

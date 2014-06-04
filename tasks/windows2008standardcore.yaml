@@ -1,4 +1,0 @@
----
-os_version: Windows_Server_2008_SERVERSTANDARD
-description: Microsoft Windows 2008 Standard
-base: windows2008
