@@ -10,12 +10,6 @@ $share  = 'razor'
 $repo   = '<%= repo_url.split('/').last %>'
 $installer = "\\${server}\${share}\${repo}\sources\install.wim"
 
-write-host "fetching the unattended.xml file to feed the installer"
-$unattended_src = '<%= file_url('unattended.xml') %>'
-$unattended = "${env:SYSTEMDRIVE}\unattended.xml"
-(new-object System.Net.WebClient).DownloadFile($unattended_src, $unattended)
-
-
 write-host "mapping SMB share \\${server}\${share} for installer access"
 # As far as I can tell, if we don't persist, we don't connect the SMB share,
 # and that means we can't actually run stuff off it.
@@ -50,11 +44,16 @@ bootsect /nt60 SYS /mbr
 write-host "Add a boot entry for the Windows Recovery Tools"
 c:\Windows\system32\reagentc /setreimage /path S:\Recovery\WindowsRE /target C:\Windows
 
-Use-WindowsUnattend -UnattendPath "${unattended}" -NoRestart -Path c:\ -SystemDrive s: 
+write-host "fetching the unattended.xml file to feed the installer"
+$unattended_src = '<%= file_url('unattended.xml') %>'
+$unattended = "c:\Unattend.xml"
+(new-object System.Net.WebClient).DownloadFile($unattended_src, $unattended)
+
+# write-host "Apply Unattend.xml"
+# Use-WindowsUnattend -UnattendPath "${unattended}" -NoRestart -Path c:\ -SystemDrive s:
 
 write-host "notify Razor that the installer completed"
 (new-object System.Net.WebClient).DownloadString('<%= stage_done_url("finished") %>')
-
 
 write-host "restarting the system to complete installation"
 restart-computer
