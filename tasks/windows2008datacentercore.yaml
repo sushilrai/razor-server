@@ -1,4 +1,0 @@
----
-os_version: Windows_Server_2008_SERVERDATACENTERCORE
-description: Microsoft Windows 2008 Datacenter Core
-base: windows2008
