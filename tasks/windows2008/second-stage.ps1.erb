@@ -28,10 +28,9 @@ write-host "Creating the Windows partition"
 New-Partition -DiskNumber 0 -DriveLetter:c -UseMaximumSize | Format-Volume -FileSystem NTFS -Confirm:$false -Force -ShortFilenameSupport:$true
 
 # Expand the image we want onto the disk.
-# For now I am hardcoding this.  It should be template-ized.
-$target_os = "Windows Server 2008 R2 SERVERENTERPRISE"
+$target_os = "<%= node.task.os_version.gsub('_', ' ') %>"
 
-write-host "Imaging the Windows partition"
+write-host "Imaging the Windows partition with ${target_os}"
 Expand-WindowsImage -ApplyPath c:\ -ImagePath "${installer}" -Name $target_os -Verify -CheckIntegrity
 write-host "Setting up the Windws recovery environment"
 md S:\Recovery\WindowsRE
