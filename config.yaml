@@ -40,6 +40,7 @@ all:
   # PXE boot they will all be mapped to the same node.
   match_nodes_on:
     - serial
+    - mac
   checkin_interval: 15
   # Colon-separated list of paths; each entry must be a directory in which
   # we should look for installers
