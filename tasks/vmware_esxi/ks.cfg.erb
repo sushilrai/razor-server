@@ -40,6 +40,16 @@ wget <%= stage_done_url("kickstart") %>
 
 
 %firstboot --interpreter=busybox
+
+# The following sleep is a workaround for this:
+#
+# http://kb.vmware.com/selfservice/microsites/search.do?language=en_US&cmd=displayKC&externalId=2007696
+#
+# The ticket states  that 30 seconds is a long enough  fix but we have
+# seen cases where it is not
+
+sleep 300
+
 # set the hostname correctly before we do anythig else
 esxcli system hostname set --fqdn <%= node.hostname %>
 
