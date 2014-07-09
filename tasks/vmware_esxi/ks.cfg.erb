@@ -19,7 +19,8 @@ install --firstdisk --overwritevmfs
 # @todo danielp 2013-10-11: this needs to support static mode too...
 <%=
 dir = File.expand_path(File.dirname(__FILE__))
-inc_file = File.join(dir, "bootproto_#{node.facts['serialnumber']}.inc.erb")
+serial_number = node.hw_info.select{|param|param =~ /serial=/}.first.gsub('serial=','')
+inc_file = File.join(dir, "bootproto_#{serial_number.upcase}.inc.erb")
 if File.exists?(inc_file)
   content = File.read(inc_file)
   t = ERB.new(content)
