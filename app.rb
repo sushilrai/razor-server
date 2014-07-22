@@ -284,12 +284,17 @@ class Razor::App < Sinatra::Base
   get '/svc/nodeid' do
     return 400 if params.empty?
     begin
-      if node = Razor::Data::Node.lookup(params)
-        logger.info("/svc/nodeid: #{params.inspect} mapped to #{node.id}")
-        { :id => node.id }.to_json
-      else
+      nodes, hw_info = Razor::Data::Node.find_by_hw_info(params)
+      if nodes.size > 1
+        # We have more than one node matching hw_info; fail
+        raise Razor::Data::DuplicateNodeError.new(hw_info, nodes)
+      elsif nodes.size == 0
         logger.info("/svc/nodeid: #{params.inspect} not found")
         404
+      else
+        node = nodes.first
+        logger.info("/svc/nodeid: #{params.inspect} mapped to #{node.id}")
+        {:id => node.id}.to_json
       end
     rescue Razor::Data::DuplicateNodeError => e
       logger.info("/svc/nodeid: #{params.inspect} multiple nodes")

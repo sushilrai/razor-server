@@ -316,6 +316,24 @@ module Razor::Data
       end.map { |pair| "#{pair[0]}=#{pair[1]}" }
     end
 
+    # Find all nodes matching the hardware criteria in +params+ which must
+    # be in a format that +canonicalize_hw_info+ understands. Return a
+    # pair, where the first part is an array of nodes, and the second part
+    # the +hw_info+ that was used for the lookup
+    def self.find_by_hw_info(params)
+      # For matching nodes, we only consider the +hw_info+ values named in
+      # the 'match_nodes_on' config setting.
+      hw_match = canonicalize_hw_info(params).select do |p|
+        name = p.split("=")[0]
+        Razor.config['match_nodes_on'].include?(name) or
+            name.start_with?('fact_')
+      end
+
+      hw_match.empty? and raise ArgumentError, _("Lookup was given %{keys}, none of which are configured as match criteria in match_nodes_on (%{match_nodes_on})") % {keys: params.keys, match_nodes_on: Razor.config['match_nodes_on']}
+
+      [self.where(:hw_info.pg_array.overlaps(hw_match)).all, hw_match]
+    end
+
     # Look up a node by its hw_info; any node whose hw_info overlaps with
     # the given hw_info is considered to match. If there is more than one
     # matching node, throw a +DuplicateNodeError+. If there is none, create
