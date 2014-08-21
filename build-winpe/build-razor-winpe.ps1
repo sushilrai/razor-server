@@ -1,6 +1,6 @@
 # -*- powershell -*-
 # To run this script:
-# powershell -executionpolicy bypass -file build-razor-winpe.ps1
+# powershell -executionpolicy bypass -file build-razor-winpe.ps1 [ASM appliance IP] [Your Windows .iso name] [New Windows .iso name]
 #
 param(
     [Cmdletbinding(PositionalBinding = $false)]
