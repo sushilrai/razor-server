@@ -1,6 +1,6 @@
 # -*- powershell -*-
 # To run this script:
-# powershell -executionpolicy bypass -file build-razor-winpe.ps1
+# powershell -executionpolicy bypass -file build-razor-winpe.ps1 [ASM appliance IP] [Your Windows .iso name] [New Windows .iso name]
 #
 param(
     [Cmdletbinding(PositionalBinding = $false)]
@@ -228,7 +228,7 @@ $packages = join-path $adk "WinPE_OCs"
 #For windows 2008 we need to add the missing fonts for winpe
 $fonts = join-path $adk '\Media\EFI\Microsoft\Boot\Fonts\*'
 $fontsdir = Join-Path $windowsdirectory '\boot\fonts'
-Copy-Item $fonts $fontsdir
+Copy-Item $fonts $fontsdir -Force
 
 ########################################################################
 # These are "constants" that are calculated from the above.
