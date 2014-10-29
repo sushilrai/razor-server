@@ -24,7 +24,7 @@ echo "<%= URI.parse(repo_url).host %> dellasm" >> /etc/hosts
 #install the puppet agent
 mkdir /tmp/mnt
 mount -o nolock,username=readonly,password=readonly //<%= URI.parse(repo_url).host %>/razor /tmp/mnt
-rpm -ivh /tmp/mnt/puppet-agent/rhel6/x86_64/*.rpm
+rpm -ivh /tmp/mnt/puppet-agent/rhel<%= task.os_version %>/x86_64/*.rpm
 umount /tmp/mnt
 rm -rf /tmp/mnt
 
