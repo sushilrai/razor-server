@@ -47,8 +47,14 @@ echo ====================[ /etc/puppet/puppet.conf ]=========================
 cat /etc/puppet/puppet.conf
 echo ========================================================================
 
-#start the puppet agent
+#start and enable the puppet agent
+<% if task.os_version == '7' %>
+systemctl enable puppet.service
+systemctl start puppet.service
+<% else %>
+chkconfig puppet on
 service puppet start
+<% end %>
 
 <%= render_template("os_complete") %>
 
