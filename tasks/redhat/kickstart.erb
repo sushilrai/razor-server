@@ -16,7 +16,18 @@ rootpw --iscrypted <%=
 network --hostname <%= node.hostname %>
 firewall --enabled --ssh
 authconfig --enableshadow --passalgo=sha512 --enablefingerprint
-timezone --utc America/Los_Angeles
+<%=
+    dir = File.expand_path(File.dirname(__FILE__))
+    serial_number = node.hw_info.select{|param|param =~ /serial=/}.first.gsub('serial=','')
+    ntp_config_file = File.join(dir, "ntp_config_#{serial_number.upcase}.inc.erb")
+    if File.exists?(ntp_config_file)
+      content = File.read(ntp_config_file)
+      time_zone = ( content.scan(/TIMEZONE=(.*)/).flatten.first || '' ).strip
+      !time_zone.empty? ? "timezone --utc #{time_zone}" : 'timezone --utc America/Los_Angeles'
+    else
+      'timezone --utc America/Los_Angeles'
+    end
+%>
 # Avoid having 'rhgb quiet' on the boot line
 bootloader --location=mbr --append="crashkernel=auto"
 # The following is the partition information you requested
@@ -50,6 +61,7 @@ libselinux-ruby
 ruby-irb
 ruby-rdoc
 ruby
+ntp
 
 %end
 

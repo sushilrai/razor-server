@@ -28,6 +28,28 @@ rpm -ivh /tmp/mnt/puppet-agent/rhel<%= task.os_version %>/x86_64/*.rpm
 umount /tmp/mnt
 rm -rf /tmp/mnt
 
+# NTP Setting
+ntp_server=<%=
+    dir = File.expand_path(File.dirname(__FILE__))
+    serial_number = node.hw_info.select{|param|param =~ /serial=/}.first.gsub('serial=','')
+    ntp_config_file = File.join(dir, "ntp_config_#{serial_number.upcase}.inc.erb")
+    if File.exists?(ntp_config_file)
+      content = File.read(ntp_config_file)
+      (content.scan(/NTPSERVER=(.*)/).flatten.first || '').strip
+    end
+%>
+
+### NTP CONFIGURATIONS ###
+if [ "$ntp_server" != "" ]; then
+  cat > /etc/ntp.conf << __NTP_CONFIG__
+  restrict default kod nomodify notrap noquerynopeer
+  restrict 127.0.0.1
+  server $ntp_server
+__NTP_CONFIG__
+/sbin/chkconfig --level 345 ntpd on
+fi
+
+
 #update puppet.conf file
 cat > /etc/puppet/puppet.conf << EOF
 [main]
