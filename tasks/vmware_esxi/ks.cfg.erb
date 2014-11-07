@@ -81,13 +81,41 @@ esxcli system syslog config logger set --id=vmkernel --rotate=20 --size=2048
 esxcli system syslog config logger set --id=fdm --rotate=20
 esxcli system syslog config logger set --id=vpxa --rotate=20
 
+# NTP Setting
+ntp_server=<%=
+    require 'erb'
+    require 'pathname'
+    require 'ostruct'
+    require 'yaml'
+
+    def load_file(filename, dir_name, opt={:parse_yaml => false})
+      default={}
+      local_dir = File.dirname(__FILE__)
+      file_path = File.join(local_dir, "..", dir_name, filename)
+      if File.exists?(file_path)
+        if opt[:parse_yaml]
+          result = YAML.load_file(file_path)
+        else
+          result = File.read(file_path)
+        end
+      end
+      result ||= default
+    end
+    options = load_file("#{node.hostname}.yaml", task.name, :parse_yaml => true)
+    (options['ntp_server'] || '').strip.size > 0 ? options['ntp_server'] : ""
+
+%>
+
 ### NTP CONFIGURATIONS ###
-# cat > /etc/ntp.conf << __NTP_CONFIG__
-# restrict default kod nomodify notrap noquerynopeer
-# restrict 127.0.0.1
-# server <%= @ntpserver %>
-# __NTP_CONFIG__
-# /sbin/chkconfig --level 345 ntpd on
+if [ "$ntp_server" != "" ]; then
+cat > /etc/ntp.conf << __NTP_CONFIG__
+restrict default kod nomodify notrap noquerynopeer
+restrict 127.0.0.1
+server $ntp_server
+__NTP_CONFIG__
+service ntpd start
+/sbin/chkconfig --level 345 ntpd on
+fi
 
 ### FIREWALL CONFIGURATION ###
 
