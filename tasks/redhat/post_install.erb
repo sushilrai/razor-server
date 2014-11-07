@@ -30,13 +30,27 @@ rm -rf /tmp/mnt
 
 # NTP Setting
 ntp_server=<%=
-    dir = File.expand_path(File.dirname(__FILE__))
-    serial_number = node.hw_info.select{|param|param =~ /serial=/}.first.gsub('serial=','')
-    ntp_config_file = File.join(dir, "ntp_config_#{serial_number.upcase}.inc.erb")
-    if File.exists?(ntp_config_file)
-      content = File.read(ntp_config_file)
-      (content.scan(/NTPSERVER=(.*)/).flatten.first || '').strip
+    require 'erb'
+    require 'pathname'
+    require 'ostruct'
+    require 'yaml'
+
+    def load_file(filename, dir_name, opt={:parse_yaml => false})
+      default={}
+      local_dir = File.dirname(__FILE__)
+      file_path = File.join(local_dir, "..", dir_name, filename)
+      if File.exists?(file_path)
+        if opt[:parse_yaml]
+          result = YAML.load_file(file_path)
+        else
+          result = File.read(file_path)
+        end
+      end
+      result ||= default
     end
+    options = load_file("#{node.hostname}.yaml", task.name, :parse_yaml => true)
+    (options['ntp_server'] || '').strip.size > 0 ? options['ntp_server'] : ""
+
 %>
 
 ### NTP CONFIGURATIONS ###
@@ -46,6 +60,7 @@ if [ "$ntp_server" != "" ]; then
   restrict 127.0.0.1
   server $ntp_server
 __NTP_CONFIG__
+service ntpd start
 /sbin/chkconfig --level 345 ntpd on
 fi
 

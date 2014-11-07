@@ -17,16 +17,27 @@ network --hostname <%= node.hostname %>
 firewall --enabled --ssh
 authconfig --enableshadow --passalgo=sha512 --enablefingerprint
 <%=
-    dir = File.expand_path(File.dirname(__FILE__))
-    serial_number = node.hw_info.select{|param|param =~ /serial=/}.first.gsub('serial=','')
-    ntp_config_file = File.join(dir, "ntp_config_#{serial_number.upcase}.inc.erb")
-    if File.exists?(ntp_config_file)
-      content = File.read(ntp_config_file)
-      time_zone = ( content.scan(/TIMEZONE=(.*)/).flatten.first || '' ).strip
-      !time_zone.empty? ? "timezone --utc #{time_zone}" : 'timezone --utc America/Los_Angeles'
-    else
-      'timezone --utc America/Los_Angeles'
+    require 'erb'
+    require 'pathname'
+    require 'ostruct'
+    require 'yaml'
+
+    def load_file(filename, dir_name, opt={:parse_yaml => false})
+      default={}
+      local_dir = File.dirname(__FILE__)
+      file_path = File.join(local_dir, '..' , dir_name, filename)
+      if File.exists?(file_path)
+        if opt[:parse_yaml]
+          result = YAML.load_file(file_path)
+        else
+          result = File.read(file_path)
+        end
+      end
+      result ||= default
     end
+    options = load_file("#{node.hostname}.yaml", task.name, :parse_yaml => true)
+    (options['time_zone'] || '').strip.size > 0 ? "timezone --utc #{options['time_zone']}" : 'timezone --utc America/Los_Angeles'
+
 %>
 # Avoid having 'rhgb quiet' on the boot line
 bootloader --location=mbr --append="crashkernel=auto"
