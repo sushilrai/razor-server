@@ -20,11 +20,38 @@ install --firstdisk --overwritevmfs
 <%=
 dir = File.expand_path(File.dirname(__FILE__))
 serial_number = node.hw_info.select{|param|param =~ /serial=/}.first.gsub('serial=','')
-inc_file = File.join(dir, "bootproto_#{serial_number.upcase}.inc.erb")
-if File.exists?(inc_file)
-  content = File.read(inc_file)
-  t = ERB.new(content)
-  t.result(binding)
+require 'asm/util'
+options = ASM::Util.load_option_file("#{node.hostname}.yaml", dir, true)
+if !options.nil? && !options.empty?
+  vmnic_device = 'vmnic0'
+  if options['mac_address']
+    vmnic_device = options['mac_address']
+  else
+    interfaces = node.facts['interfaces'].strip.split(',')
+    interfaces.each do |interface|
+      if node.facts["ipaddress_#{interface}"] && node.facts["macaddress_#{interface}"]
+        vmnic_device = node.facts["macaddress_#{interface}"]
+        break
+      end
+    end
+  end
+
+  line = "network --bootproto=static --device=#{vmnic_device} --ip=#{options['static_ip']}  --netmask=#{options['netmask']} --gateway=#{options['gateway']}"
+
+  # NOTE: vlanId is a FixNum
+  if options['vlanId']
+    line += " --vlanid=#{options['vlanId']}"
+  end
+
+  if options['nameserver']
+    line += " --nameserver=#{options['nameserver']}"
+  else
+    line += ' --nodns'
+  end
+  if options['os_host_name']
+    line += " --hostname='#{options['os_host_name']}'"
+  end
+  line
 else
   'network --bootproto=dhcp --device=vmnic0'
 end
@@ -83,25 +110,9 @@ esxcli system syslog config logger set --id=vpxa --rotate=20
 
 # NTP Setting
 ntp_server=<%=
-    require 'erb'
-    require 'pathname'
-    require 'ostruct'
-    require 'yaml'
-
-    def load_file(filename, dir_name, opt={:parse_yaml => false})
-      default={}
-      local_dir = File.dirname(__FILE__)
-      file_path = File.join(local_dir, "..", dir_name, filename)
-      if File.exists?(file_path)
-        if opt[:parse_yaml]
-          result = YAML.load_file(file_path)
-        else
-          result = File.read(file_path)
-        end
-      end
-      result ||= default
-    end
-    options = load_file("#{node.hostname}.yaml", task.name, :parse_yaml => true)
+    require 'asm/util'
+    file_dir = File.join(File.dirname(__FILE__), '..', task.name)
+    options = ASM::Util.load_option_file("#{node.hostname}.yaml", file_dir, true)
     (options['ntp_server'] || '').strip.size > 0 ? options['ntp_server'] : ""
 
 %>
