@@ -18,10 +18,9 @@ install --firstdisk --overwritevmfs
 # Set the network to DHCP on the first network adapater
 # @todo danielp 2013-10-11: this needs to support static mode too...
 <%=
-dir = File.expand_path(File.dirname(__FILE__))
-serial_number = node.hw_info.select{|param|param =~ /serial=/}.first.gsub('serial=','')
 require 'asm/util'
-options = ASM::Util.load_option_file("#{node.hostname}.yaml", dir, true)
+base_dir=File.join(ASM::Util::INSTALLER_OPTS_DIR, task.name)
+options = ASM::Util.load_file("#{node.hostname}.yaml", base_dir)
 if !options.nil? && !options.empty?
   vmnic_device = 'vmnic0'
   if options['mac_address']
@@ -111,8 +110,8 @@ esxcli system syslog config logger set --id=vpxa --rotate=20
 # NTP Setting
 ntp_server=<%=
     require 'asm/util'
-    file_dir = File.join(File.dirname(__FILE__), '..', task.name)
-    options = ASM::Util.load_option_file("#{node.hostname}.yaml", file_dir, true)
+    base_dir=File.join(ASM::Util::INSTALLER_OPTS_DIR, task.name)
+    options = ASM::Util.load_file("#{node.hostname}.yaml", base_dir)
     (options['ntp_server'] || '').strip.size > 0 ? options['ntp_server'] : ""
 
 %>
