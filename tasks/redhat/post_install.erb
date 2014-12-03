@@ -69,6 +69,48 @@ cat > /etc/puppet/puppet.conf << EOF
 
 EOF
 
+# Nagios NRPE configuration, used only for C* series machines
+if [[ "$(/usr/bin/facter productname)" =~ ^PowerEdge\ C[0-9]+ ]]; then
+  /bin/sed -i 's:allowed_hosts=127.0.0.1:allowed_hosts=dellasm,127.0.0.1:' /etc/nagios/nrpe.cfg
+  /bin/sed -i '/^command\[/ s:^:#:' /etc/nagios/nrpe.cfg
+
+  echo "nrpe    ALL=(ALL) NOPASSWD: /usr/lib64/nagios/plugins/ldstate" > /etc/sudoers.d/asm
+  echo "Defaults!/usr/lib64/nagios/plugins/ldstate !requiretty" >> /etc/sudoers.d/asm
+  echo "command[check_ldstate]=/usr/bin/sudo /usr/lib64/nagios/plugins/ldstate asm_health" > /etc/nrpe.d/asm.cfg
+
+<% if task.os_version == '7' %>
+  cat > /root/asm.te << __ASM_SELINUX__
+module asm 1.0;
+
+require {
+        type nrpe_t;
+        type sudo_exec_t;
+        class capability audit_write;
+        class file { read execute open getattr execute_no_trans };
+        class netlink_audit_socket { nlmsg_relay create };
+}
+
+allow nrpe_t self:capability audit_write;
+allow nrpe_t self:netlink_audit_socket { nlmsg_relay create };
+allow nrpe_t sudo_exec_t:file { read execute open getattr execute_no_trans };
+__ASM_SELINUX__
+
+  checkmodule -M -m -o /root/asm.mod /root/asm.te
+  semodule_package -m /root/asm.mod -o /root/asm.pp
+  semodule -i /root/asm.pp
+
+  systemctl enable nrpe.service
+  systemctl start nrpe.service
+
+  /usr/bin/firewall-cmd --zone=public --add-port=5666/tcp --permanent
+  /usr/bin/firewall-cmd --reload
+<% else %>
+  chkconfig nrpe on
+  service nrpe start
+  /usr/sbin/lokkit -p 5666:tcp
+<% end %>
+fi
+
 # For debugging, just in case, dump out the modified confirmation file.
 echo ====================[ /etc/puppet/puppet.conf ]=========================
 cat /etc/puppet/puppet.conf
