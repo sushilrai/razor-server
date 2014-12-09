@@ -127,6 +127,12 @@ service ntpd start
 /sbin/chkconfig --level 345 ntpd on
 fi
 
+# enter maintenance mode
+vim-cmd hostsvc/maintenance_mode_enter
+
+wget -O /tmp/vmware-esx-provider-lsiprovider.vib <%= compose_url('/svc/repo/puppet-agent/esxi/vmware-esx-provider-lsiprovider.vib') %>
+esxcli software vib install -v /tmp/vmware-esx-provider-lsiprovider.vib
+
 ### FIREWALL CONFIGURATION ###
 
 # enable firewall
@@ -140,9 +146,6 @@ done
 
 # backup ESXi configuration to persist changes
 /sbin/auto-backup.sh
-
-# enter maintenance mode
-vim-cmd hostsvc/maintenance_mode_enter
 
 # copy %first boot script logs to persisted datastore
 cp /var/log/hostd.log "/vmfs/volumes/$(hostname -s)-local-storage-1/firstboot-hostd.log"
