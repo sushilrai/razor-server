@@ -7,11 +7,20 @@ url --url=<%= repo_url %>
 cmdline
 lang en_US.UTF-8
 keyboard us
-rootpw <%= node.root_password %>
+rootpw --iscrypted <%= 
+    require 'asm/cipher'
+    require 'unix_crypt'
+    asm_decrypted_password = ASM::Cipher.decrypt_string(node.root_password)
+    UnixCrypt::SHA512.build(asm_decrypted_password)
+%>
 network --hostname <%= node.hostname %>
 firewall --enabled --ssh
 authconfig --enableshadow --passalgo=sha512 --enablefingerprint
-timezone --utc America/Los_Angeles
+<%=
+    options = node.policy.node_metadata['installer_options']
+    (options['time_zone'] || '').strip.size > 0 ? "timezone --utc #{options['time_zone']}" : 'timezone --utc America/Los_Angeles'
+
+%>
 # Avoid having 'rhgb quiet' on the boot line
 bootloader --location=mbr --append="crashkernel=auto"
 # The following is the partition information you requested
@@ -25,8 +34,30 @@ autopart
 reboot
 
 # followig is MINIMAL https://partner-bugzilla.redhat.com/show_bug.cgi?id=593309
-%packages --nobase
+%packages --ignoremissing
 @core
+@System Tools
+automake
+gcc
+cpp
+glibc-devel
+glibc-headers
+glibc-kernelheaders
+glibc
+glibc-common
+libgcc
+zlib-devel
+openssl-devel
+readline-devel
+augeas-libs
+libselinux-ruby
+ruby-irb
+ruby-rdoc
+ruby
+ntp
+smartmontools
+usbutils
+policycoreutils-python
 
 %end
 
@@ -39,11 +70,12 @@ if [ ! -f /etc/rc.d/rc.local ]; then
   # On systems using systemd /etc/rc.d/rc.local does not exist at all
   # though systemd is set up to run the file if it exists
   touch /etc/rc.d/rc.local
-  chmod a+x /etc/rc.d/rc.local
 fi
+chmod a+x /etc/rc.d/rc.local
 echo bash /root/razor_postinstall.sh >> /etc/rc.d/rc.local
 chmod +x /root/razor_postinstall.sh
 
 curl -s <%= stage_done_url("kickstart") %>
+
 %end
 ############
