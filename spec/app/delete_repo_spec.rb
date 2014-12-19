@@ -1,22 +1,27 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 require_relative '../../app'
 
-describe "delete-repo" do
-  include Rack::Test::Methods
+describe Razor::Command::DeleteRepo do
+  include Razor::Test::Commands
 
   let(:app) { Razor::App }
+  let(:repo) { Fabricate(:repo) }
+  let(:command_hash) { { "name" => repo.name } }
   before :each do
     authorize 'fred', 'dead'
   end
 
   def delete_repo(name)
-    post '/api/commands/delete-repo', { "name" => name }.to_json
+    command 'delete-repo', { "name" => name }
   end
 
   context "/api/commands/delete-repo" do
     before :each do
       header 'content-type', 'application/json'
     end
+
+    it_behaves_like "a command"
 
     it "should delete an existing repo" do
       repo = Fabricate(:repo)

@@ -1,10 +1,23 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 require_relative '../../app'
 
-describe "update node metadata command" do
-  include Rack::Test::Methods
+describe Razor::Command::UpdateNodeMetadata do
+  include Razor::Test::Commands
 
   let(:app) { Razor::App }
+
+  let(:node) do
+    Fabricate(:node)
+  end
+  let(:command_hash) do
+    {
+        'node' => node.name,
+        'value' => 'v1',
+        'key' => 'k1',
+        'no-replace' => 'true'
+    }
+  end
 
   before :each do
     header 'content-type', 'application/json'
@@ -12,28 +25,36 @@ describe "update node metadata command" do
   end
 
   def update_metadata(data)
-    post '/api/commands/update-node-metadata', data.to_json
+    command 'update-node-metadata', data
   end
 
-  it "should require a node" do
-    data = { 'key' => 'k1', 'value' => 'v1' }
+  it_behaves_like "a command"
+
+  it "should require no-replace to equal true" do
+    data = { 'node' => "node#{node.id}", 'key' => 'k1', 'value' => 'v1', 'no-replace' => 'not true' }
     update_metadata(data)
-    last_response.status.should == 400
-    JSON.parse(last_response.body)["error"].should =~ /must supply node/
+    last_response.status.should == 422
+    last_response.json["error"].should =~ /no-replace should be a boolean, but was actually a string/
   end
 
-  it "should require a key" do
-    data = { 'node' => 'node1', 'value' => 'v1' }
+  it "should conform no_replace" do
+    data = { 'node' => "node#{node.id}", 'key' => 'k1', 'value' => 'v1', 'no_replace' => 'not true' }
     update_metadata(data)
-    last_response.status.should == 400
-    JSON.parse(last_response.body)["error"].should =~ /must supply key/
+    last_response.status.should == 422
+    last_response.json["error"].should =~ /no-replace should be a boolean, but was actually a string/
   end
 
-  it "should require a value" do
-    data = { 'node' => 'node1', 'key' => 'k1' }
+  it "should require all to equal true" do
+    data = { 'node' => "node#{node.id}", 'value' => 'v1', 'all' => 'not true' }
     update_metadata(data)
-    last_response.status.should == 400
-    JSON.parse(last_response.body)["error"].should =~ /must supply value/
+    last_response.status.should == 422
+    last_response.json["error"].should =~ /all should be a boolean, but was actually a string/
+  end
+
+  it "should succeed with 'all' and 'no-replace'" do
+    data = { 'node' => "node#{node.id}", 'value' => 'v1', 'all' => 'true', 'no-replace' => 'true' }
+    update_metadata(data)
+    last_response.status.should == 202
   end
 
   #Defer to the modify-node-metadata tests for the verification of the

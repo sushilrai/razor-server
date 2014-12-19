@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 module Razor::Data
   class Policy < Sequel::Model
 
@@ -19,11 +20,20 @@ module Razor::Data
 
     # Put this policy into a different place in the policy table; +where+
     # can be either +before+ or +after+, +other+ must be a policy.
+    #
+    # This will raise an error if the object has not been saved, since this is
+    # required to be confirmed in current position, or if you attempt to move
+    # the object relative to itself.
     def move(where, other)
-      raise "Save object first. List plugin can not move unsaved objects" if new?
-      if where.to_sym == :before
-        move_to(other.position_value)
-      elsif where.to_sym == :after
+      raise _("Save object first. List plugin can not move unsaved objects") if new?
+      if self == other
+        raise ArgumentError, _("cannot move a policy relative to itself")
+      elsif where == 'before'
+        # Move, but only if we don't already meet the constraint.
+        if self.position_value >= other.position_value then
+          move_to(other.position_value)
+        end
+      elsif where == 'after'
         lp = last_position
         if other.position_value == lp
           move_to(lp, lp)
@@ -31,7 +41,8 @@ module Razor::Data
           move_to(other.position_value+1, lp)
         end
       else
-        raise "the where parameter must be either 'before' or 'after'"
+        # TRANSLATORS: do not translate 'where, 'before', or 'after'
+        raise _("the where parameter must be either 'before' or 'after'")
       end
     end
 
@@ -54,21 +65,23 @@ module Razor::Data
     end
 
     def task
-      Razor::Task.find(task_name)
+      task_name ? Razor::Task.find(task_name) : repo.task
     end
 
     def validate
       super
-
       # Because we allow tasks in the file system, we do not have a fk
       # constraint on +task_name+; this check only helps spot simple
       # typos etc.
       begin
-        self.task
+        Razor::Task.find(task_name) if task_name
       rescue Razor::TaskNotFoundError
-        errors.add(:task_name,
-                   "task '#{task_name}' does not exist")
+        errors.add(:task, _("task '%{name}' does not exist") % {name: task_name})
       end
+    end
+
+    def self.fields_for_command_comparison
+      super - %w{rule_number}
     end
 
     def self.bind(node)

@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 require_relative "../spec_helper"
 
 describe Razor::Data::Node do
@@ -6,8 +7,7 @@ describe Razor::Data::Node do
   end
 
   let (:policy) { Fabricate(:policy) }
-
-  let (:node) { Fabricate(:node) }
+  let (:node)   { Fabricate(:node) }
 
   context "canonicalize_hw_info" do
     def canonicalize(hw_info)
@@ -40,15 +40,68 @@ describe Razor::Data::Node do
     end
   end
 
-  context "find_by_name" do
+  context "registered?" do
+    it "should be false if no facts are set" do
+      node = Fabricate(:node, :hw_info => ['serial=1'])
+      node.registered?.should be_false
+    end
+
+    it "should be true if facts are set" do
+      node = Fabricate(:node, :hw_info => ['serial=1'],
+                       :facts => { "f1" => "a"})
+      node.registered?.should be_true
+    end
+  end
+
+  context "task" do
+    it "returns the policy's task for a bound node" do
+      node = Fabricate(:bound_node)
+      node.task.name.should == node.policy.task.name
+    end
+
+    it "returns the noop task for installed and registered nodes" do
+      node = Fabricate(:installed_node)
+      node.facts = { 'f1' => 'a' }
+      node.task.name.should == Razor::Task.noop_task.name
+    end
+
+    describe "returns the microkernel task" do
+      it "for new nodes" do
+        node = Fabricate(:node)
+        node.task.name.should == Razor::Task.mk_task.name
+      end
+
+      it "for nodes that are installed but not registered" do
+        node = Fabricate(:installed_node)
+        node.task.name.should == Razor::Task.mk_task.name
+      end
+
+      it "for nodes that are registered but not installed" do
+        node = Fabricate(:node, :facts => { 'f1' => 'a' })
+        node.task.name.should == Razor::Task.mk_task.name
+      end
+    end
+  end
+
+  # @todo danielp 2014-03-11: This kind of does test "is it on", but it was
+  # previously application level logic, so better to translate the tests and
+  # make sure they pass.
+  #
+  # Dear future developer, probably me, please think kindly of me for
+  # retaining these, and delete them with a clear conscience, their sole
+  # purpose having been served well before you started to wonder why they
+  # existed and if they could be deleted.
+  #
+  # At the point you ask that question, they most certainly can.
+  context "finding by name" do
     it "finds a node" do
       node = Fabricate(:node)
-      Node.find_by_name(node.name).should == node
+      Node[:name => node.name].should == node
     end
 
     ["node42", "hello there", ""].each do |name|
       it "returns nil for nonexistant node '#{name}'" do
-        Node.find_by_name(name).should be_nil
+        Node[:name => name].should be_nil
       end
     end
   end
@@ -112,7 +165,9 @@ describe Razor::Data::Node do
       Node.lookup(hw2).should == n2
     end
 
-    it "should update hw_info when it changes" do
+    it "should not update hw_info when it changes" do
+      Razor.config['match_nodes_on'] = ['mac', 'asset']
+
       hw_hash = { "mac" => ["00-11-22-33-44-55"], "asset" => "abcd" }
       n1 = Node.lookup(hw_hash)
       n1.should_not be_nil
@@ -120,7 +175,7 @@ describe Razor::Data::Node do
       hw_hash = { "net0" => "de-ad-be-ef-00-00", "asset" => "abcd" }
       n2 = Node.lookup(hw_hash)
       n2.id.should == n1.id
-      n2.hw_info.should == [ "asset=abcd", "mac=de-ad-be-ef-00-00" ]
+      n2.hw_info.should == [ "asset=abcd", "mac=00-11-22-33-44-55" ]
     end
 
     it "should complain if hardware is moved between known nodes" do
@@ -134,6 +189,26 @@ describe Razor::Data::Node do
       expect {
         Node.lookup(hw2)
       }.to raise_error(Razor::Data::DuplicateNodeError)
+    end
+
+    it "should create node when no match for hw_info exists" do
+      Razor.config['match_nodes_on'] = ['mac', 'uuid']
+      hw_hash = { "mac" => ["00-11-22-33-44-55"], "uuid" => "abcd" }
+      n1 = Node.lookup(hw_hash)
+      n1.id.should_not be_nil
+      Node[n1.id].should_not be_nil
+      n1.hw_hash.should == hw_hash
+      n1.registered?.should be_false
+    end
+
+    it "should return a DuplicateNodeError if 3 or more matches are found" do
+      hw_hash = { "mac" => ["00-11-22-33-44-55"], "uuid" => "abcd" }
+
+      Fabricate(:node, :hw_hash => hw_hash)
+      Fabricate(:node, :hw_hash => hw_hash)
+      Fabricate(:node, :hw_hash => hw_hash)
+
+      expect{ Node.lookup(hw_hash) }.to raise_error(Razor::Data::DuplicateNodeError)
     end
   end
 
@@ -188,6 +263,18 @@ describe Razor::Data::Node do
   end
 
 
+  context "protect_new_nodes" do
+    it "should treat a new node as installed if set to true" do
+      Razor.config['protect_new_nodes'] = true
+      node.save.reload.installed.should be_true
+    end
+
+    it "should treat a new node as 'not installed' if set to false" do
+      Razor.config['protect_new_nodes'] = false
+      node.save.reload.installed.should be_false
+    end
+  end
+
   describe "binding on checkin" do
     hw_id = "001122334455"
 
@@ -227,6 +314,21 @@ describe Razor::Data::Node do
       node.log[0]["severity"].should == "error"
       node.log[0]["msg"].should =~ /typo/
       node.policy.should be_nil
+    end
+
+    it "should not bind if the node is marked installed" do
+      node.installed = 'test'
+      node.save
+
+      policy = Fabricate(:policy, :rule_number => 20)
+      policy.add_tag(tag)
+      policy.save
+
+      node.checkin('facts' => { 'f1' => 'a' })
+
+      node.reload
+      node.policy.should be_nil
+      node.installed.should == 'test'
     end
 
     describe "of a bound node" do
@@ -283,6 +385,134 @@ describe Razor::Data::Node do
         # node.tags reflects the tags that applied when the node was bound
         node.tags.should == [ tag ]
         node.policy.should == policy20
+      end
+    end
+  end
+
+  describe "register" do
+    before(:each) do
+      Razor.config['match_nodes_on'] = ['mac', 'uuid']
+      Razor.config['facts.match_on'] = ['/fact\d+/']
+    end
+
+    let(:hw_hash) {
+      { "mac" => ["00-11-22-33-44-55"],
+        "uuid" => "abcd",
+        "fact_fact1" => "value1",
+        "fact_fact2" => "value2" }
+    }
+
+    let(:facts) {
+      { "fact1"      => "value1",
+        "fact2"      => "value2",
+        "uuid"       => "abcd",
+        "macaddress" => "00:11:22:33:44:55" }
+    }
+
+    it "should set the values of facts in the hw_info" do
+      Fabricate(:node, :hw_hash => hw_hash)
+
+
+      node = Node.register(facts)
+      node.hw_info.should == [ "fact_fact1=value1", "fact_fact2=value2",
+                               "mac=00-11-22-33-44-55", "uuid=abcd" ]
+    end
+
+    describe "when there are exactly 2 matches" do
+      it "should return a DuplicateNodeError if both are registered" do
+        n1_hw_hash = hw_hash
+        n2_hw_hash = { "mac" => ["11-11-22-33-44-55"], "uuid" => "efgh", "fact_fact1" => "value1", "fact_fact2" => "value2" }
+
+        Fabricate(:node, :hw_hash => n1_hw_hash, :facts => facts)
+        Fabricate(:node, :hw_hash => n2_hw_hash, :facts => facts)
+
+        expect{ Node.register(facts) }.to raise_error(Razor::Data::DuplicateNodeError)
+      end
+
+      it "should return one of them if neither are registered" do
+        n1_hw_hash = { "mac" => ["00-11-22-33-44-55"] }
+        n2_hw_hash = { "mac" => ["00-11-22-33-44-55"] }
+
+        Fabricate(:node, :hw_hash => n1_hw_hash, :facts => facts)
+        Fabricate(:node, :hw_hash => n2_hw_hash, :facts => facts)
+
+        expect{ Node.register(facts) }.to raise_error(Razor::Data::DuplicateNodeError)
+      end
+
+      describe "when one is registered and the other is not" do
+        it "should return the registered node" do
+          n1_hw_hash = { "mac" => ["00-11-22-33-44-55"], "uuid" => "abcd", "fact_fact1" => "value1", "fact_fact2" => "value2" }
+          n2_hw_hash = { "mac" => ["11-11-22-33-44-55"], "uuid" => "efgh"}.freeze
+
+          facts = {
+            "fact1"      => "value1",           #will match n1
+            "fact2"      => "value2",           #will match n1
+            "uuid"       => "efgh",             #will match n2
+            "macaddress" => "11:11:22:33:44:55" #will match n2
+          }
+
+          n1 = Fabricate(:node, :hw_hash => n1_hw_hash,
+                         :facts => { "fact1" => "value1", "fact2" => "value2" })
+          n2 = Fabricate(:node, :hw_hash => n2_hw_hash)
+
+          real_node = Node.register(facts)
+
+          real_node.id.should              == n1.id
+          real_node.hw_hash['mac'].should  == n2_hw_hash['mac']
+          real_node.hw_hash['uuid'].should == n2_hw_hash['uuid']
+        end
+
+        it "should merge the logs from the unregistered node into the registered one" do
+          n1_hw_hash = { "mac" => ["00-11-22-33-44-55"], "uuid" => "abcd", "fact_fact1" => "value1", "fact_fact2" => "value2" }
+          n2_hw_hash = { "mac" => ["11-11-22-33-44-55"], "uuid" => "efgh"}
+
+          n1logs = [
+            { :event => 'testlog1 on n1', :severity => 'info' },
+            { :event => 'testlog2 on n1', :severity => 'info' },
+          ]
+
+          n2logs = [
+            { :event => 'testlog1 on n2', :severity => 'info' },
+            { :event => 'testlog2 on n2', :severity => 'info' },
+          ]
+
+          n1 = Fabricate(:node, :hw_hash => n1_hw_hash,
+                         :facts => { "fact1" => "value1" })
+          n2 = Fabricate(:node, :hw_hash => n2_hw_hash)
+
+          n1logs.each{ |l| n1.log_append(l) }
+          n2logs.each{ |l| n2.log_append(l) }
+
+          facts = {
+            "fact1"      => "value1",           #will match n1
+            "fact2"      => "value2",           #will match n1
+            "uuid"       => "efgh",             #will match n2
+            "macaddress" => "11:11:22:33:44:55" #will match n2
+          }
+
+          real_node = Node.register(facts)
+          real_node.id.should         == n1.id
+          real_node.log.length.should == 4
+        end
+
+        it "should destroy the non-registered node" do
+          n1_hw_hash = { "mac" => ["00-11-22-33-44-55"], "uuid" => "abcd", "fact_fact1" => "value1", "fact_fact2" => "value2" }
+          n2_hw_hash = { "mac" => ["11-11-22-33-44-55"], "uuid" => "efgh" }
+
+          facts = {
+            "fact1"      => "value1",           #will match n1
+            "fact2"      => "value2",           #will match n1
+            "uuid"       => "efgh",             #will match n2
+            "macaddress" => "11:11:22:33:44:55" #will match n2
+          }
+
+          n1 = Fabricate(:node, :hw_hash => n1_hw_hash,
+                         :facts => { "fact1" => "value1", "fact2" => "value2" })
+          n2 = Fabricate(:node, :hw_hash => n2_hw_hash)
+
+          Node.register(facts)
+          Node[n2.id].should be_nil
+        end
       end
     end
   end

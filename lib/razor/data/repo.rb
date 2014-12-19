@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 require 'tmpdir'
 require 'open-uri'
 require 'uri'
@@ -21,13 +22,15 @@ module Razor::Data
     # The only columns that may be set through "mass assignment", which is
     # typically through the constructor.  Only enforced at the Ruby layer, but
     # since we direct everything through the model that is acceptable.
-    set_allowed_columns :name, :iso_url, :url
+    set_allowed_columns :name, :iso_url, :url, :task_name
 
-    # When a new instance is saved, we need to make the repo accessible as a
-    # local file.
-    def after_create
-      super
-      publish 'make_the_repo_accessible'
+    # Create a new repo and kick off the background import of its ISO (if
+    # there is one) The +command+ is used to track progress of the import
+    # and report any errors that might happen
+    def self.import(data, command)
+      super.tap do |repo, new|
+        new and repo.publish('make_the_repo_accessible', command)
+      end
     end
 
     # When we are destroyed, if we have a scratch directory, we need to
@@ -39,15 +42,24 @@ module Razor::Data
       # else that we could do to resolve the situation -- we already tried to
       # delete it once...
       self.tmpdir and FileUtils.remove_entry_secure(self.tmpdir, true)
+
+      # Remove repo directory.
+      if Dir.exist?(iso_location)
+        FileUtils.remove_entry_secure(iso_location, true)
+      end
     end
 
     def validate
       super
       if url and iso_url
-        errors.add(:urls, "either url or iso_url must be given")
+        errors.add(:urls, _("only one of the 'url' and 'iso_url' attributes can be set at the same time"))
       elsif url.nil? and iso_url.nil?
-        errors.add(:urls, "only one of url and iso_url can be used")
+        errors.add(:urls, _("you must set one of the 'url' or 'iso_url' attributes"))
       end
+    end
+
+    def task
+      Razor::Task.find(task_name)
     end
 
     # Make the repo accessible on the local system, and then generate
@@ -55,13 +67,14 @@ module Razor::Data
     # and the temporary file stored for later cleanup.
     #
     # @warning this should not be called inside a transaction.
-    def make_the_repo_accessible
+    def make_the_repo_accessible(command)
+      command.store('running')
       url = URI.parse(iso_url)
       if url.scheme.downcase == 'file'
-        File.readable?(url.path) or raise "unable to read local file #{url.path}"
-        publish 'unpack_repo', url.path
+        File.readable?(url.path) or raise _("unable to read local file %{path}") % {path: url.path}
+        publish 'unpack_repo', command, url.path
       else
-        publish 'unpack_repo', download_file_to_tempdir(url)
+        publish 'unpack_repo', command, download_file_to_tempdir(url)
       end
     end
 
@@ -82,35 +95,29 @@ module Razor::Data
       tmpdir   = Pathname(Dir.mktmpdir("razor-repo-#{filesystem_safe_name}-download"))
       filename = tmpdir + Pathname(url.path).basename
 
-      File.open(filename, CreateFileForWrite, 0600) do |dest|
-        url.open do |source|
-          # JRuby 1.7.4 requires String or IO class be passed to
-          # `IO.copy_stream`, which unfortunately precludes our using it.
-          # open-uri sanely returns StringIO for short bodies, which just
-          # don't work here.  We should replace it with the cleaner
-          # one-function version when we can.
-          #
-          # Preallocating the buffer reduces object churn.
-          buffer = ''
-          while source.read(BufferSize, buffer)
-            written = dest.write(buffer)
-            unless written == buffer.size
-              raise "download_file_to_tempdir(#{url}): unable to cope with partial write of #{written} bytes when #{buffer.size} expected"
-            end
-          end
-
-          # Try and get our data out to disk safely before we consider the
-          # write completed.  That way a crash won't leak partial state, given
-          # our database does try and be this conservative too.
-          begin
-            dest.flush
-            dest.respond_to?('fdatasync') ? dest.fdatasync : dest.fsync
-          rescue NotImplementedError
-            # This signals that neither fdatasync nor fsync could be used on
-            # this IO, which we can politely ignore, because what the heck can
-            # we do anyhow?
-          end
+      result = url.open
+      unless result.is_a?(File)
+        # Create Tempfile to converge code flow.
+        tmpfile = Tempfile.new filename.to_s
+        tmpfile.binmode
+        tmpfile << result.read
+        result = tmpfile
+      end
+      begin
+        # Try and get our data out to disk safely before we consider the
+        # write completed.  That way a crash won't leak partial state, given
+        # our database does try and be this conservative too.
+        begin
+          result.flush
+          result.respond_to?('fdatasync') ? result.fdatasync : result.fsync
+        rescue NotImplementedError
+          # This signals that neither fdatasync nor fsync could be used on
+          # this IO, which we can politely ignore, because what the heck can
+          # we do anyhow?
         end
+        FileUtils.mv(result, filename)
+      ensure
+        result.close
       end
 
       # Downloading was successful, so save our temporary directory for later
@@ -135,32 +142,52 @@ module Razor::Data
       Pathname(Razor.config['repo_store_root'])
     end
 
+    # Reserved words in DOS and NTFS filesystems.  Gotta love the magic.
+    # This only includes words that are not going to be otherwise escaped.
+    ReservedFilenames = %w{
+      CON PRN AUX NUL
+      COM1 COM2 COM3 COM4 COM5 COM6 COM7 COM8 COM9
+      LPT1 LPT2 LPT3 LPT4 LPT5 LPT6 LPT7 LPT8 LPT9
+    }
+
+    # The same thing, turned into a regexp.
+    ReservedFilenameRegexp = /^(#{ReservedFilenames.join('|')})(?:$|\.)/i
+
+    # Characters that are escaped for both DOS, Windows, Unix, etc,
+    # compatibility.  Treated as a set of characters, not just a string.
+    ReservedCharacters = %r{[\u0000-\u001f\u007f%/\\?*:|"<>$\',]}
+
     # Return the name of the repo, made file-system safe by URL-encoding it
     # as a single string.
     def filesystem_safe_name
-      URI.escape(name, '/\\?*:|"<>$\'')
-      # For Windows, we should also eliminate reserved DOS device files (eg:
-      # COM1) that can cause a nasty DOS by, eg, locking up forever if there
-      # is nothing attached to the appropriate communication port.
+      name.
+        gsub(ReservedCharacters) {|sub| '%%%02X' % sub.ord }.
+        gsub(ReservedFilenameRegexp) {|sub| sub.gsub(/[^.]/) {|c| '%%%02X' % c.ord } }
     end
 
     # Take a local ISO repo file, possible temporary, possibly permanent,
     # that we can read, and unpack it into our working directory.  Once we are
     # done, notify ourselves of that so any cleanup required can be performed.
-    def unpack_repo(path)
-      destination = repo_store_root + filesystem_safe_name
+    def unpack_repo(command, path)
+      destination = iso_location
       destination.mkpath        # in case it didn't already exist
       Archive.extract(path, destination)
-      self.publish('release_temporary_repo')
+      self.publish('release_temporary_repo', command)
     end
-    
+
+    def iso_location
+      repo_store_root + filesystem_safe_name
+    end
+    private :iso_location
+
     # Release any temporary repo previously downloaded.
-    def release_temporary_repo
+    def release_temporary_repo(command)
       if self.tmpdir
         FileUtils.remove_entry_secure(self.tmpdir)
         self.tmpdir = nil
         self.save
       end
+      command.store('finished')
     end
 
 

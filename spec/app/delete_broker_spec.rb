@@ -1,18 +1,22 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 require_relative '../../app'
 
-describe "delete-broker" do
-  include Rack::Test::Methods
+describe Razor::Command::DeleteBroker do
+  include Razor::Test::Commands
 
   let(:app) { Razor::App }
+  let(:broker) { Fabricate(:broker)}
+  let(:command_hash) { { "name" => broker.name } }
   before :each do
     authorize 'fred', 'dead'
   end
 
-  def delete_broker(name, force=nil)
-    params = { "name" => name }
-    post '/api/commands/delete-broker', params.to_json
+  def delete_broker(name)
+    command 'delete-broker', { "name" => name }
   end
+
+  it_behaves_like "a command"
 
   before :each do
     header 'content-type', 'application/json'

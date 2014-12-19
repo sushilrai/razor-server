@@ -1,8 +1,9 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 require_relative '../../app'
 
-describe "update-tag-rule" do
-  include Rack::Test::Methods
+describe Razor::Command::UpdateTagRule do
+  include Razor::Test::Commands
 
   let(:app) { Razor::App }
   before :each do
@@ -13,7 +14,7 @@ describe "update-tag-rule" do
     params = { "name" => name }
     params["rule"] = rule unless rule.nil?
     params["force"] = force unless force.nil?
-    post '/api/commands/update-tag-rule', params.to_json
+    command 'update-tag-rule', params
   end
 
   before :each do
@@ -21,12 +22,15 @@ describe "update-tag-rule" do
   end
 
   let (:tag) { Fabricate(:tag, :rule => ["=", 1, 1]) }
-
-  it "should require a rule" do
-    update_tag_rule(tag.name)
-    last_response.status.should == 400
-    Tag[:id => tag.id].rule.should == tag.rule
+  let (:command_hash) do
+    {
+        'name' => tag.name,
+        'rule' => ["!=", 1, 1],
+        'force' => true
+    }
   end
+
+  it_behaves_like "a command"
 
   it "should update an existing tag" do
     update_tag_rule(tag.name, ["!=", 1, 1])

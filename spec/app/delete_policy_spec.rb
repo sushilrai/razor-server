@@ -1,10 +1,13 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 require_relative '../../app'
 
-describe "delete-policy" do
-  include Rack::Test::Methods
+describe Razor::Command::DeletePolicy do
+  include Razor::Test::Commands
 
   let(:app) { Razor::App }
+  let(:policy) { Fabricate(:policy)}
+  let(:command_hash) { { "name" => Fabricate(:policy).name } }
   before :each do
     authorize 'fred', 'dead'
   end
@@ -12,19 +15,13 @@ describe "delete-policy" do
   def delete_policy(name=nil)
     params = Hash.new
     params["name"] = name unless name.nil?
-    post '/api/commands/delete-policy', params.to_json
+    command 'delete-policy', params
   end
+
+  it_behaves_like "a command"
 
   before :each do
     header 'content-type', 'application/json'
-  end
-
-  it "should complain about no policy name" do
-    count = Policy.count
-    delete_policy()
-    last_response.status.should == 400
-    last_response.json["error"].should =~ /Supply 'name'/
-    Policy.count.should == count
   end
 
   it "should advise about policy not existing" do

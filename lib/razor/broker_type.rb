@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 require 'erb'
 require 'pathname'
 require 'tilt'
@@ -20,6 +21,11 @@ class Razor::BrokerTypeNotFoundError < RuntimeError; end
 class Razor::BrokerTypeInvalidError  < RuntimeError; end
 
 class Razor::BrokerType
+  # Since we behave more or less like a Razor::Data object, we need to include
+  # the same general purpose helper methods they do.
+  extend  Razor::Data::ClassMethods
+  include Razor::Data::InstanceMethods
+
   # Enumerate all instances of brokers available on the system.
   def self.all
     Razor.config.broker_paths.collect do |path|
@@ -34,14 +40,18 @@ class Razor::BrokerType
 
   # Fetch an instance of a single broker by name; this follows the
   # conventional path behaviour by preferring the first instance on the path.
-  def self.find(name)
+  #
+  # This follows the pattern of our Sequel::Model classes to allow this to be
+  # polymorphicly used in validation where they are.
+  def self.find(match)
+    match.keys == [:name] or raise ArgumentError, "broker types only match on `name`"
+    name = match[:name]
+
     broker = Razor.config.broker_paths.
       map  {|path| Pathname(path) + "#{name}.broker" }.
       find {|path| path.directory? }
 
-    broker or raise Razor::BrokerTypeNotFoundError, "No broker #{name}.broker directory on search path"
-
-    new(broker)
+    broker ? new(broker) : nil
   end
 
   # The name of the broker
@@ -51,6 +61,9 @@ class Razor::BrokerType
 
   alias_method 'to_s', 'name'
 
+  def ==(o)
+    o.is_a?(Razor::BrokerType) && o.name == name
+  end
 
   # Return the fully interpolated install script, ready to run on a node.
   #
@@ -63,9 +76,9 @@ class Razor::BrokerType
     # could theoretically exploit this to do bad things based on the
     # template actions.  Better safe than sorry...
     node.is_a?(Razor::Data::Node) or
-      raise TypeError, "internal error: #{node.class} where Razor::Data::Node expected"
+      raise TypeError, _("internal error: %{class} where Razor::Data::Node expected") % {class: node.class}
     broker.is_a?(Razor::Data::Broker) or
-      raise TypeError, "internal error: #{node.class} where Razor::Data::Broker expected"
+      raise TypeError, _("internal error: %{class} where Razor::Data::Broker expected") % {class: node.class}
 
     # @todo danielp 2013-08-05: what else do we need to expose to the template
     # to make this all work?
@@ -128,9 +141,9 @@ class Razor::BrokerType
     # the `install.erb` file.  We assert nothing about it beyond the most
     # basic existence.
     install_template_path.exist? or
-      raise Razor::BrokerTypeInvalidError, "#{@name} has no install template"
+      raise Razor::BrokerTypeInvalidError, _("%{name} has no install template") % {name: @name}
     install_template_path.readable? or
-      raise Razor::BrokerTypeInvalidError, "#{@name} has an install template, but it is unreadable"
+      raise Razor::BrokerTypeInvalidError, _("%{name} has an install template, but it is unreadable") % {name: @name}
   end
 
   # Return the name of the installer template file.

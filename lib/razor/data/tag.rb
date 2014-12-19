@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 class Razor::Data::Tag < Sequel::Model
   plugin :serialization
 
@@ -41,16 +42,16 @@ class Razor::Data::Tag < Sequel::Model
       if matcher.is_a?(Razor::Matcher)
         errors[:matcher] = matcher.errors unless matcher.valid?
       else
-        errors.add(:matcher, "is not a matcher object")
+        errors.add(:matcher, _("is not a matcher object"))
       end
     end
   end
 
   def around_save
     # We need to defer publishing eval_nodes until after self has been
-    # saved so that for newly created nodes the message inlcudes the actual
+    # saved so that for newly created nodes the message includes the actual
     # id
-    need_eval_nodes = new? or changed_columns.include?(:matcher)
+    need_eval_nodes = new? || changed_columns.include?(:matcher)
     super
     publish('eval_nodes') if need_eval_nodes
   end
@@ -59,14 +60,27 @@ class Razor::Data::Tag < Sequel::Model
     Razor::Data::Node.all.each do |node|
       node_tags = node.tags
 
-      if self.match?(node)
-        unless node_tags.include?(self)
-          node.add_tag(self)
+      begin
+        if self.match?(node)
+          unless node_tags.include?(self)
+            node.add_tag(self)
+          end
+        else
+          if node_tags.include?(self)
+            node.remove_tag(self)
+          end
         end
-      else
-        if node_tags.include?(self)
-          node.remove_tag(self)
-        end
+      rescue Razor::Matcher::RuleEvaluationError => e
+        node.log_append(
+          severity: :error,
+          error: 'tag_match',
+          msg: "Matching tag '#{name}': " + e.message)
+        # @todo lutter 2014-05-16: eventually, we need the command that
+        # causes eval_nodes to be called here and report the evaluation
+        # failure as part of the command, too.  This will require passing
+        # the command through a call to Tag#save and involves some
+        # gymnastics. Once we move background processing of commands into
+        # the commands, this will be much easier to achieve
       end
     end
     self
@@ -81,15 +95,14 @@ class Razor::Data::Tag < Sequel::Model
   #
   # Violation of these rules lead to an +ArgumentError+ being thrown.
   def self.find_or_create_with_rule(data)
-    name = data["name"] or
-      raise ArgumentError, "Tags must have a 'name'"
+    name = data['name']
     if tag = find(:name => name)
       data["rule"].nil? or data["rule"] == tag.rule or
-        raise ArgumentError, "Provided rule and existing rule for existing tag '#{name}' must be equal"
+        raise ArgumentError, _("Provided rule and existing rule for existing tag '%{name}' must be equal") % {name: name}
       tag
     else
       data["rule"] or
-        raise ArgumentError, "A rule must be provided for new tag '#{name}'"
+        raise ArgumentError, _("A rule must be provided for new tag '%{name}'") % {name: name}
       create(data)
     end
   end

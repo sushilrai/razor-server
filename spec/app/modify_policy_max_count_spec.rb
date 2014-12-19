@@ -1,16 +1,18 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 require_relative '../../app'
 
-describe "modify-policy-max-count" do
-  include Rack::Test::Methods
+describe Razor::Command::ModifyPolicyMaxCount do
+  include Razor::Test::Commands
 
   let(:app) { Razor::App }
 
   let(:policy) { Fabricate(:policy) }
+  let(:command_hash) { { "name" => policy.name, "max-count" => 1 } }
 
   def set_max_count(count=nil)
-    post '/api/commands/modify-policy-max-count',
-         { "name" => policy.name, "max-count" => count }.to_json
+    command 'modify-policy-max-count',
+         { "name" => policy.name, "max-count" => count }
   end
 
   context "/api/commands/modify-policy-max-count" do
@@ -19,16 +21,17 @@ describe "modify-policy-max-count" do
       authorize 'fred', 'dead'
     end
 
-    it "should require that max-count is present" do
-      post '/api/commands/modify-policy-max-count',
-        { "name" => policy.name }.to_json
-      last_response.status.should == 400
-      last_response.body.should =~ /max-count/
-    end
+    it_behaves_like "a command"
 
     it "should accept a string for max-count" do
       set_max_count("2")
       last_response.status.should == 202
+    end
+
+    it "should reject a non-integer string for max-count" do
+      set_max_count("a")
+      last_response.status.should == 422
+      last_response.json['error'].should =~ /'a' is not a valid integer/
     end
 
     it "should allow increasing the max-count" do

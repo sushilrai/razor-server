@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 # coding: utf-8
 require_relative "../spec_helper"
 require 'tempfile'
@@ -11,16 +12,16 @@ describe Razor::Data::Repo do
   context "name" do
     (0..31).map {|n| n.chr(Encoding::UTF_8) }.map(&:to_s).each do |char|
       it "should reject control characters (testing: #{char.inspect})" do
-        repo = Repo.new(:name => "hello #{char} world", :iso_url => 'file:///')
-        repo.should_not be_valid
-        expect { repo.save }.to raise_error Sequel::ValidationFailed
+        expect do
+          repo = Fabricate(:repo, :name => "hello #{char} world")
+        end.to raise_error Sequel::ValidationFailed
       end
     end
 
     it "should reject the `/` character in names" do
-      repo = Repo.new(:name => "hello/goodbye", :iso_url => 'file:///')
-      repo.should_not be_valid
-      expect { repo.save }.to raise_error Sequel::ValidationFailed
+      expect do
+        repo = Fabricate(:repo, :name => "hello/goodbye")
+      end.to raise_error Sequel::ValidationFailed
     end
 
     # A list of Unicode 6.0 whitespace, yay!
@@ -57,25 +58,22 @@ describe Razor::Data::Repo do
 
         context "in Ruby" do
           it "should be rejected at the start" do
-            Repo.new(:name => "#{ws}name", :iso_url => url).
-              should_not be_valid
+            Fabricate.build(:repo, :name => "#{ws}name").should_not be_valid
           end
 
           it "should be rejected at the end" do
-            Repo.new(:name => "name#{ws}", :iso_url => url).
-              should_not be_valid
+            Fabricate.build(:repo, :name => "name#{ws}").should_not be_valid
           end
 
           # Fair warning: what with using a regex for validation, this is a
           # common failure mode, and not in fact redundant to the checks above.
           it "should be rejected at both the start and the end" do
-            Repo.new(:name => "#{ws}name#{ws}", :iso_url => url).
-              should_not be_valid
+            Fabricate.build(:repo, :name => "#{ws}name#{ws}").should_not be_valid
           end
 
           if ws.ord >= 0x20 then
             it "should accept the whitespace in the middle of a name" do
-              Repo.new(:name => "hello#{ws}world", :iso_url => url).
+              Fabricate.build(:repo, :name => "hello#{ws}world").
                 should be_valid
             end
           end
@@ -84,13 +82,13 @@ describe Razor::Data::Repo do
         context "in PostgreSQL" do
           it "should be rejected at the start" do
             expect {
-              Repo.dataset.insert(:name => "#{ws}name", :iso_url => url)
+              Repo.dataset.insert(Fabricate.build(:repo, :name => "#{ws}name"))
             }.to raise_error Sequel::CheckConstraintViolation
           end
 
           it "should be rejected at the end" do
             expect {
-              Repo.dataset.insert(:name => "name#{ws}", :iso_url => url)
+              Repo.dataset.insert(Fabricate.build(:repo, :name => "name#{ws}"))
             }.to raise_error Sequel::CheckConstraintViolation
           end
 
@@ -98,14 +96,14 @@ describe Razor::Data::Repo do
           # common failure mode, and not in fact redundant to the checks above.
           it "should be rejected at both the start and the end" do
             expect {
-              Repo.dataset.insert(:name => "#{ws}name#{ws}", :iso_url => url)
+              Repo.dataset.insert(Fabricate.build(:repo, :name => "#{ws}name#{ws}"))
             }.to raise_error Sequel::CheckConstraintViolation
           end
 
           if ws.ord >= 0x20 then
             it "should accept the whitespace in the middle of a name" do
               # As long as we don't raise, we win.
-              Repo.dataset.insert(:name => "hello#{ws}world", :iso_url => url)
+              Fabricate(:repo, :name => "hello#{ws}world")
             end
           end
         end
@@ -166,7 +164,7 @@ describe Razor::Data::Repo do
         #
         # Internally this is testing on the actual *characters*.
         it "accept all legal characters: string \"#{display}\"" do
-          Repo.new(:iso_url => 'file:///', :name => string).save.should be_valid
+          Fabricate(:repo, :name => string).save.should be_valid
         end
       end
     end
@@ -181,12 +179,11 @@ describe Razor::Data::Repo do
         url = 'file:///dev/null'
 
         it "should accept the name #{name.inspect}" do
-          repo = Repo.new(:name => name, :iso_url => url)
-          repo.should be_valid
+          Fabricate(:repo).set(:iso_url => url, :url => nil).should be_valid
         end
 
         it "should round-trip the name #{name.inspect} through the database" do
-          repo = Repo.new(:name => name, :iso_url => url).save
+          repo = Fabricate(:repo, :name => name).save
           Repo.find(:name => name).should == repo
         end
       end
@@ -207,7 +204,7 @@ describe Razor::Data::Repo do
       ].each do |url|
         it "should accept a basic URL #{url.inspect}" do
           # save to push validation through the database, too.
-          Repo.new(:name => 'foo', url_name => url).save.should be_valid
+          Fabricate.build(:repo).set('url' => nil, 'iso_url' => nil, url_name => url).save.should be_valid
         end
       end
 
@@ -223,12 +220,12 @@ describe Razor::Data::Repo do
        'http://example.com/foo bar'
       ].each do |url|
         it "Ruby should reject invalid URL #{url.inspect}" do
-          Repo.new(:name => 'foo', :iso_url => url).should_not be_valid
+          Fabricate.build(:repo).set(:iso_url => url, :url => nil).should_not be_valid
         end
 
         it "PostgreSQL should reject invalid URL #{url.inspect}" do
           expect {
-            Repo.dataset.insert(:name => 'foo', :iso_url => url)
+            Repo.dataset.insert(Fabricate.build(:repo, :iso_url => url))
           }.to raise_error Sequel::CheckConstraintViolation
         end
       end
@@ -237,28 +234,43 @@ describe Razor::Data::Repo do
 
   context "url and iso_url" do
     it "should reject setting both" do
-      Repo.new(:name => 'foo', :url => 'http://example.org/',
-               :iso_url => 'http://example.com').should_not be_valid
+      expect do
+        Fabricate(:repo, :url => 'http://example.org/', :iso_url => 'http://example.com')
+      end.to raise_error(Sequel::ValidationFailed)
     end
 
     it "should require setting one of them" do
-      Repo.new(:name => 'foo').should_not be_valid
+      repo = Fabricate.build(:repo).set(:url => nil, :iso_url => nil).should_not be_valid
+    end
+  end
+
+  context "task" do
+    it "should store task_name" do
+      repo = Fabricate(:repo, :task_name => 'microkernel')
+      repo.task.name.should == 'microkernel'
+    end
+
+    it "should reject input with nil task_name" do
+      expect { Fabricate(:repo, :task_name => nil) }.to raise_error(Sequel::InvalidValue)
     end
   end
 
   context "after creation" do
     it "should automatically 'make_the_repo_accessible'" do
-      repo = Repo.new(:name => 'foo', :iso_url => 'file:///')
-      expect {
-        repo.save
-      }.to have_published(
-        'class'    => repo.class.name,
+      data = Fabricate.build(:repo).to_hash
+      command = Fabricate(:command)
+      expect { Razor::Data::Repo.import(data, command) }.
+        to have_published(
+        'class'    => Razor::Data::Repo.name,
         # Because we can't look into the future and see what that the PK will
         # be without saving, but we can't save without publishing the message
         # and spoiling the test, we have to check this more liberally...
         'instance' => include(:id => be),
+        'command'  => { :id => command.id },
         'message'  => 'make_the_repo_accessible'
       ).on(queue)
+      command.reload
+      command.status.should == 'pending'
     end
   end
 
@@ -266,21 +278,24 @@ describe Razor::Data::Repo do
     context "with file URLs" do
       let :tmpfile do Tempfile.new(['make_the_repo_accessible', '.iso']) end
       let :path    do tmpfile.path end
-      let :repo   do Repo.new(:name => 'test', :iso_url => "file://#{path}") end
+      let :repo   do Fabricate(:repo, :iso_url => "file://#{path}") end
+      let :command do Fabricate(:command) end
 
       it "should raise (to trigger a retry) if the repo is not readable" do
         File.chmod(00000, path) # yes, *no* permissions, thanks
         expect {
-          repo.make_the_repo_accessible
+          repo.make_the_repo_accessible(command)
         }.to raise_error RuntimeError, /unable to read local file/
+        command.status.should == 'running'
       end
 
       it "should publish 'unpack_repo' if the repo is readable" do
         expect {
-          repo.make_the_repo_accessible
+          repo.make_the_repo_accessible(command)
         }.to have_published(
            'class'     => repo.class.name,
            'instance'  => repo.pk_hash,
+           'command'   => { :id => command.id },
            'message'   => 'unpack_repo',
            'arguments' => [path]
         ).on(queue)
@@ -290,10 +305,11 @@ describe Razor::Data::Repo do
         repo.iso_url = "FILE://#{path}"
 
         expect {
-          repo.make_the_repo_accessible
+          repo.make_the_repo_accessible(command)
         }.to have_published(
           'class'     => repo.class.name,
           'instance'  => repo.pk_hash,
+          'command'   => { :id => command.id },
           'message'   => 'unpack_repo',
           'arguments' => [path]
         ).on(queue)
@@ -325,6 +341,11 @@ describe Razor::Data::Repo do
           res.body   = ' ' * LongFileSize
         end
 
+        @server.mount_proc '/redirect.iso' do |req, res|
+          res.status = 301
+          res['location'] = '/long.iso'
+        end
+
         Thread.new { @server.start }
       end
 
@@ -332,8 +353,12 @@ describe Razor::Data::Repo do
         @server and @server.shutdown
       end
 
-      let :repo do
-        Repo.new(:name => 'test', :iso_url => 'http://localhost:8000/')
+      let :repo do Fabricate(:repo) end
+
+      let :command do Fabricate(:command) end
+
+      after :each do
+        repo.exists? && repo.destroy
       end
 
       context "download_file_to_tempdir" do
@@ -354,6 +379,12 @@ describe Razor::Data::Repo do
           file = repo.download_file_to_tempdir(url)
           File.size?(file).should == LongFileSize
         end
+
+        it "should follow redirects" do
+          url  = URI.parse('http://localhost:8000/redirect.iso')
+          file = repo.download_file_to_tempdir(url)
+          File.size?(file).should == LongFileSize
+        end
       end
 
       it "should publish 'unpack_repo' if the repo is readable" do
@@ -361,10 +392,11 @@ describe Razor::Data::Repo do
         repo.save              # make sure our primary key is set!
 
         expect {
-          repo.make_the_repo_accessible
+          repo.make_the_repo_accessible(command)
         }.to have_published(
           'class'     => repo.class.name,
           'instance'  => repo.pk_hash,
+          'command'   => { :id => command.id },
           'message'   => 'unpack_repo',
           'arguments' => [end_with('/short.iso')]
         ).on(queue)
@@ -376,7 +408,7 @@ describe Razor::Data::Repo do
     it "should remove the temporary directory, if there is one" do
       tmpdir = Dir.mktmpdir('razor-repo-download')
 
-      repo = Repo.new(:name => 'foo', :iso_url => 'file:///')
+      repo = Fabricate.build(:repo)
       repo.tmpdir = tmpdir
       repo.save
       repo.destroy
@@ -384,8 +416,29 @@ describe Razor::Data::Repo do
       File.should_not be_exist tmpdir
     end
 
+    it "should remove the repo's unpacked iso directory" do
+      tiny_iso = (Pathname(__FILE__).dirname.parent + 'fixtures' + 'iso' + 'tiny.iso').to_s
+      command = Fabricate(:command)
+
+      begin
+        repo_dir = Dir.mktmpdir('test-razor-repo-dir')
+        Razor.config.stub(:[]).with('repo_store_root').and_return(repo_dir)
+
+        repo = Fabricate.build(:repo)
+        repo.unpack_repo(command, tiny_iso)
+        unpacked_iso_dir = File::join(repo_dir, repo.name)
+        Dir.exist?(unpacked_iso_dir).should be_true
+        repo.save
+        repo.destroy
+        Dir.exist?(unpacked_iso_dir).should be_false
+      ensure
+        # Cleanup
+        repo_dir and FileUtils.remove_entry_secure(repo_dir)
+      end
+    end
+
     it "should not fail if there is no temporary directory" do
-      repo = Repo.new(:name => 'foo', :iso_url => 'file:///')
+      repo = Fabricate.build(:repo)
       repo.tmpdir = nil
       repo.save
       repo.destroy
@@ -393,12 +446,56 @@ describe Razor::Data::Repo do
   end
 
   context "filesystem_safe_name" do
-    '/\\?*:|"<>$\''.each_char do |char|
+    "\x00\x1f\x7f/\\?*:|\"<>$\',".each_char do |char|
       it "should escape #{char.inspect}" do
-        repo = Repo.new(:name => "foo#{char}bar", :iso_url => 'file:///')
+        repo = Fabricate.build(:repo, :name => "foo#{char}bar")
         repo.filesystem_safe_name.should_not include char
         repo.filesystem_safe_name.should =~ /%0{0,6}#{char.ord.to_s(16)}/i
       end
+    end
+
+    it "should escape '%' in filenames" do
+      Fabricate.build(:repo, :name => '%ab').filesystem_safe_name.should == '%25ab'
+      Fabricate.build(:repo, :name => 'a%b').filesystem_safe_name.should == 'a%25b'
+      Fabricate.build(:repo, :name => 'ab%').filesystem_safe_name.should == 'ab%25'
+    end
+
+    Razor::Data::Repo::ReservedFilenames.each do |name|
+      encoded = /#{name.upcase.gsub(/./) {|x| '%%0{0,6}%02X' % x.ord }}/i
+
+      it "should encode reserved filename #{name.inspect}" do
+        Fabricate.build(:repo, :name => name).filesystem_safe_name.should =~ encoded
+      end
+
+      it "should not encode files that end with #{name.inspect}" do
+        Fabricate.build(:repo, :name => "s" + name).filesystem_safe_name.should == 's' + name
+      end
+
+      it "should not encode files that start with #{name.inspect} and anything but '.'" do
+        Fabricate.build(:repo, :name => name + 's').filesystem_safe_name.should == name + 's'
+      end
+
+      %w{. .foo .con .txt .banana}.each do |ext|
+        it "should encode reserved filename #{name.inspect} if followed by #{ext.inspect}" do
+          Fabricate.build(:repo, :name => name + ext).filesystem_safe_name.
+            should =~ /#{encoded}#{Regexp.escape(ext)}/
+        end
+      end
+
+      it "should encode all possible case variants of #{name}" do
+        bits = name.split('').map {|c| [c.downcase, c.upcase]}
+        names = bits.first.product(*bits[1..-1]).map(&:join)
+        names.each do |n|
+          Fabricate.build(:repo, :name => name).filesystem_safe_name.should =~ encoded
+        end
+      end
+    end
+
+    it "should return UTF-8 output string" do
+      name = '죾쒃쌼싁씜봜ㅛ짘홒녿'
+      encoded = Fabricate.build(:repo, :name => name).filesystem_safe_name
+      encoded.encoding.should == Encoding.find('UTF-8')
+      encoded.should == name
     end
   end
 
@@ -407,7 +504,7 @@ describe Razor::Data::Repo do
       path = '/no/such/repo-store'
       Razor.config.stub(:[]).with('repo_store_root').and_return(path)
 
-      root = Repo.new(:name => "foo", :iso_url => 'file:///').repo_store_root
+      root = Fabricate.build(:repo, :name => "foo").repo_store_root
       root.should be_an_instance_of Pathname
       root.should == Pathname(path)
     end
@@ -419,8 +516,10 @@ describe Razor::Data::Repo do
     end
 
     let :repo do
-      Repo.new(:name => 'unpack', :iso_url => "file://#{tiny_iso}").save
+      Fabricate(:repo, :iso_url => "file://#{tiny_iso}")
     end
+
+    let :command do Fabricate(:command) end
 
     it "should create the repo store root directory if absent" do
       Dir.mktmpdir do |tmpdir|
@@ -429,23 +528,34 @@ describe Razor::Data::Repo do
 
         root.should_not exist
 
-        repo.unpack_repo(tiny_iso)
+        repo.unpack_repo(command, tiny_iso)
 
         root.should exist
       end
     end
 
     it "should unpack the repo into the filesystem_safe_name under root" do
-      pending("libarchive ISO support on OSX", :if => ::FFI::Platform.mac?) do
-        Dir.mktmpdir do |root|
-          root = Pathname(root)
-          Razor.config['repo_store_root'] = root
-          repo.unpack_repo(tiny_iso)
+      Dir.mktmpdir do |root|
+        root = Pathname(root)
+        Razor.config['repo_store_root'] = root
+        repo.unpack_repo(command, tiny_iso)
 
-          (root + repo.filesystem_safe_name).should exist
-          (root + repo.filesystem_safe_name + 'content.txt').should exist
-          (root + repo.filesystem_safe_name + 'file-with-filename-that-is-longer-than-64-characters-which-some-unpackers-get-wrong.txt').should exist
-        end
+        (root + repo.filesystem_safe_name).should exist
+        (root + repo.filesystem_safe_name + 'content.txt').should exist
+        (root + repo.filesystem_safe_name + 'file-with-filename-that-is-longer-than-64-characters-which-some-unpackers-get-wrong.txt').should exist
+      end
+    end
+
+    it "should unpack successfully with a unicode name" do
+      repo.set(:name => '죾쒃쌼싁씜봜ㅛ짘홒녿').save
+      Dir.mktmpdir do |root|
+        root = Pathname(root)
+        Razor.config['repo_store_root'] = root
+        repo.unpack_repo(command, tiny_iso)
+
+        (root + repo.filesystem_safe_name).should exist
+        (root + repo.filesystem_safe_name + 'content.txt').should exist
+        (root + repo.filesystem_safe_name + 'file-with-filename-that-is-longer-than-64-characters-which-some-unpackers-get-wrong.txt').should exist
       end
     end
 
@@ -454,24 +564,27 @@ describe Razor::Data::Repo do
         Dir.mktmpdir do |root|
           root = Pathname(root)
           Razor.config['repo_store_root'] = root
-          repo.unpack_repo(tiny_iso)
+          repo.unpack_repo(command, tiny_iso)
         end
       }.to have_published(
         'class'    => repo.class.name,
         'instance' => repo.pk_hash,
+        'command'   => { :id => command.id },
         'message'  => 'release_temporary_repo'
       ).on(queue)
     end
   end
 
   context "release_temporary_repo" do
-    let :repo do
-      Repo.new(:name => 'unpack', :iso_url => 'file:///dev/empty').save
-    end
+    let :repo do Fabricate(:repo) end
+
+    let :command do Fabricate(:command) end
 
     it "should do nothing, successfully, if tmpdir is nil" do
       repo.tmpdir.should be_nil
-      repo.release_temporary_repo
+      repo.release_temporary_repo(command)
+      command.reload
+      command.status.should == 'finished'
     end
 
     it "should remove the temporary directory" do
@@ -483,7 +596,7 @@ describe Razor::Data::Repo do
         repo.tmpdir = root
         repo.save
 
-        repo.release_temporary_repo
+        repo.release_temporary_repo(command)
 
         root.should_not exist
       end
@@ -499,7 +612,7 @@ describe Razor::Data::Repo do
         repo.save
 
         expect {
-          repo.release_temporary_repo
+          repo.release_temporary_repo(command)
         }.to raise_error Errno::ENOENT, /no-such-directory/
       end
     end

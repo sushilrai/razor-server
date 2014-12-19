@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 require 'sinatra'
 require 'java'
 
@@ -8,7 +9,7 @@ class Razor::Middleware::Auth
       case e
       when String then %r(^#{e}($|/))i
       when Regexp then e
-      else raise TypeError, "patterns must be strings or regular expressions"
+      else raise TypeError, _("patterns must be strings or regular expressions")
       end
     end
   end

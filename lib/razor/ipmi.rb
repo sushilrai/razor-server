@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 require 'tempfile'
 require 'open3'
 
@@ -69,9 +70,9 @@ module Razor::IPMI
     power_state(node) == 'on'
   end
 
-  def self.reset(node, hard = false)
-    output = run(node, 'power', hard ? 'reset' : 'soft')
-    unless output =~ /Chassis Power Control: #{hard ? 'Reset' : 'Soft'}/i
+  def self.reset(node)
+    output = run(node, 'power', 'cycle')
+    unless output =~ /Chassis Power Control: Cycle/i
       raise IPMIError(node, 'reset', "output did not indicate reset operation:\n#{output}")
     end
     true
@@ -158,7 +159,7 @@ module Razor::IPMI
 
   def self.build_command(node, args)
     node.ipmi_hostname or
-      raise ArgumentError, "node #{node.name} has no IPMI hostname set"
+      raise ArgumentError, _("node %{name} has no IPMI hostname set") % {name: node.name}
 
     command = %w{ipmitool -I lanplus}
     command.concat(['-H', node.ipmi_hostname])

@@ -1,0 +1,128 @@
+#!/bin/bash
+
+exec >> /var/log/razor.log 2>&1
+
+echo "Starting post_install"
+
+# Wait for network to come up when using NetworkManager.
+if service NetworkManager status >/dev/null 2>&1 && type -P nm-online; then
+    nm-online -q --timeout=10 || nm-online -q -x --timeout=30
+    [ "$?" -eq 0 ] || exit 1
+fi
+
+<%= render_template("set_hostname") %>
+
+<%= render_template("store_ip") %>
+
+# @todo lutter 2013-09-12: we should register the system with RHN; be
+# careful though, since this file is also used by the CentOS installer, for
+# which there is no RHN registration
+
+#add the puppet master host entry in /etc/hosts
+echo "<%= URI.parse(repo_url).host %> dellasm" >> /etc/hosts
+
+#install the puppet agent
+mkdir /tmp/mnt
+mount -o nolock,username=readonly,password=readonly //<%= URI.parse(repo_url).host %>/razor /tmp/mnt
+rpm -ivh /tmp/mnt/puppet-agent/rhel<%= task.os_version %>/x86_64/*.rpm
+umount /tmp/mnt
+rm -rf /tmp/mnt
+
+# NTP Setting
+ntp_server=<%=
+    options = node.policy.node_metadata['installer_options']
+    (options['ntp_server'] || '').strip.size > 0 ? options['ntp_server'] : ""
+%>
+
+### NTP CONFIGURATIONS ###
+if [ "$ntp_server" != "" ]; then
+  cat > /etc/ntp.conf << __NTP_CONFIG__
+  restrict default kod nomodify notrap noquerynopeer
+  restrict 127.0.0.1
+  server $ntp_server
+__NTP_CONFIG__
+<% if task.os_version == '7' %>
+    systemctl enable ntpd.service
+    systemctl start ntpd.service
+<% else %>
+    /sbin/chkconfig --level 345 ntpd on
+    service ntpd start
+<% end %>
+
+fi
+
+
+#update puppet.conf file
+cat > /etc/puppet/puppet.conf << EOF
+[main]
+    server = dellasm
+    logdir = /var/log/puppet
+    rundir = /var/run/puppet
+    ssldir = \$vardir/ssl
+[agent]
+    classfile   = \$vardir/classes.txt
+    localconfig = \$vardir/localconfig
+    certname    = <%= require 'asm/util'; ASM::Util.hostname_to_certname(node.hostname.split('.').first) %>
+
+EOF
+
+# Nagios NRPE configuration, used only for C* series machines
+if [[ "$(/usr/bin/facter productname)" =~ ^PowerEdge\ C[0-9]+ ]]; then
+  /bin/sed -i 's:allowed_hosts=127.0.0.1:allowed_hosts=dellasm,127.0.0.1:' /etc/nagios/nrpe.cfg
+  /bin/sed -i '/^command\[/ s:^:#:' /etc/nagios/nrpe.cfg
+
+  echo "nrpe    ALL=(ALL) NOPASSWD: /usr/lib64/nagios/plugins/ldstate" > /etc/sudoers.d/asm
+  echo "Defaults!/usr/lib64/nagios/plugins/ldstate !requiretty" >> /etc/sudoers.d/asm
+  echo "command[check_ldstate]=/usr/bin/sudo /usr/lib64/nagios/plugins/ldstate asm_health" > /etc/nrpe.d/asm.cfg
+
+<% if task.os_version == '7' %>
+  cat > /root/asm.te << __ASM_SELINUX__
+module asm 1.0;
+
+require {
+        type nrpe_t;
+        type sudo_exec_t;
+        class capability audit_write;
+        class file { read execute open getattr execute_no_trans };
+        class netlink_audit_socket { nlmsg_relay create };
+}
+
+allow nrpe_t self:capability audit_write;
+allow nrpe_t self:netlink_audit_socket { nlmsg_relay create };
+allow nrpe_t sudo_exec_t:file { read execute open getattr execute_no_trans };
+__ASM_SELINUX__
+
+  checkmodule -M -m -o /root/asm.mod /root/asm.te
+  semodule_package -m /root/asm.mod -o /root/asm.pp
+  semodule -i /root/asm.pp
+
+  systemctl enable nrpe.service
+  systemctl start nrpe.service
+
+  /usr/bin/firewall-cmd --zone=public --add-port=5666/tcp --permanent
+  /usr/bin/firewall-cmd --reload
+<% else %>
+  chkconfig nrpe on
+  service nrpe start
+  /usr/sbin/lokkit -p 5666:tcp
+<% end %>
+fi
+
+# For debugging, just in case, dump out the modified confirmation file.
+echo ====================[ /etc/puppet/puppet.conf ]=========================
+cat /etc/puppet/puppet.conf
+echo ========================================================================
+
+#start and enable the puppet agent
+<% if task.os_version == '7' %>
+systemctl enable puppet.service
+systemctl start puppet.service
+<% else %>
+chkconfig puppet on
+service puppet start
+<% end %>
+
+<%= render_template("os_complete") %>
+
+# We are done
+curl -s <%= stage_done_url("finished") %>

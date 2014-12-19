@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 require 'spec_helper'
 
 # Until we have more than one messaging helper, this will do.
@@ -15,7 +16,7 @@ describe Razor::Messaging::Sequel do
     it "should return nil if no instance is found" do
       # Ensure we don't just, say, return the first instance of an object
       # regardless of the input.
-      saved = Razor::Data::Repo.new(:name => 'some', :iso_url => 'file:///').save
+      saved = Fabricate(:repo)
       handler.find_instance_in_class(Razor::Data::Repo, { :name => 'nonesuch' }).
         should be_nil
     end
@@ -33,7 +34,7 @@ describe Razor::Messaging::Sequel do
     end
 
     it "should return an instance if the object exists" do
-      saved = Razor::Data::Repo.new(:name => 'some', :iso_url => 'file:///').save
+      saved = Fabricate(:repo)
       # This may not be identity, but is equality.
       handler.find_instance_in_class(Razor::Data::Repo, saved.pk_hash).
         should == saved
@@ -93,6 +94,31 @@ describe Razor::Messaging::Sequel do
 
     it "should return the constant" do
       handler.find_razor_data_class("Razor::Data::Repo").should eq Razor::Data::Repo
+    end
+  end
+
+  describe "find_command" do
+    it "should fail when pk_hash is nil" do
+      expect {
+        handler.find_command(nil)
+      }.to raise_error MessageViolatesConsistencyChecks, /when Hash was expected/
+    end
+
+    it "should fail when pk_hash has no id" do
+      expect {
+        handler.find_command({})
+      }.to raise_error MessageViolatesConsistencyChecks, /must be a nonempty Hash/
+    end
+
+    it "should fail when the command is not found" do
+      expect {
+        handler.find_command({:id => 42})
+      }.to raise_error MessageViolatesConsistencyChecks, /Razor::Data::Command with pk {:id=>42}/
+    end
+
+    it "should return the command" do
+      command = Fabricate(:command)
+      handler.find_command(command.pk_hash).should == command
     end
   end
 
@@ -261,7 +287,7 @@ describe Razor::Messaging::Sequel do
     end
 
     it "should not queue a retry if the instance is found" do
-      pk = Razor::Data::Repo.new(:name => 'some', :iso_url => 'file:///').save.pk_hash
+      pk = Fabricate(:repo).pk_hash
       content = {
         'class'     => 'Razor::Data::Repo',
         'instance'  => pk,
@@ -270,11 +296,40 @@ describe Razor::Messaging::Sequel do
       }
 
       handler.process!(message(content))
-      queue.each {|msg| msg.should_not include content }
+      queue.should == []
+    end
+
+    it "should not queue a retry if the command is not found" do
+      pk = Fabricate(:repo).pk_hash
+      content = {
+        'class'     => 'Razor::Data::Repo',
+        'instance'  => pk,
+        'command'   => { :id => 42 },
+        'message'   => 'to_s',
+        'arguments' => []
+      }
+
+      handler.process!(message(content))
+      queue.should == []
+    end
+
+    it "should queue a retry if the command throws an exception" do
+      pk = Fabricate(:repo).pk_hash
+      cmd = Fabricate(:command)
+      content = {
+          'class'     => 'Razor::Data::Repo',
+          'instance'  => pk,
+          'command'   => { :id => cmd.id },
+          'message'   => 'unpack_repo',
+          'arguments' => ["doesnt-exist"]
+      }
+
+      expect { handler.process!(message(content)) }.
+          to have_published(content).on(queue)
     end
 
     it "should deliver the message if 'arguments' is missing" do
-      pk = Razor::Data::Repo.new(:name => 'some', :iso_url => 'file:///').save.pk_hash
+      pk = Fabricate(:repo).pk_hash
       content = {
         'class'     => 'Razor::Data::Repo',
         'instance'  => pk,
@@ -282,11 +337,11 @@ describe Razor::Messaging::Sequel do
       }
 
       handler.process!(message(content))
-      queue.each {|msg| msg.should_not include content }
+      queue.should == []
     end
 
     it "should deliver the message if 'arguments' is nil" do
-      pk = Razor::Data::Repo.new(:name => 'some', :iso_url => 'file:///').save.pk_hash
+      pk = Fabricate(:repo).pk_hash
       content = {
         'class'     => 'Razor::Data::Repo',
         'instance'  => pk,
@@ -295,13 +350,13 @@ describe Razor::Messaging::Sequel do
       }
 
       handler.process!(message(content))
-      queue.each {|msg| msg.should_not include content }
+      queue.should == []
     end
   end
 
   describe "Sequel::Model#publish" do
     subject(:repo) do
-      repo = Razor::Data::Repo.new(:name => 'test', :iso_url => 'file:///').save
+      repo = Fabricate(:repo)
       queue.remove_messages # saving produces messages, which we are not testing.
       repo
     end
@@ -381,6 +436,26 @@ EOT
         its(["instance"])  { should == repo.pk_hash }
         its(["message"])   { should == 'to_s' }
         its(["arguments"]) { should == [] }
+        its(["command"])   { should be_nil }
+      end
+
+      # Test the special behavior of 'publish' when the first
+      # argument is a Razor::Data::Command
+      context "publish with command" do
+        let(:command) { Fabricate(:command) }
+        subject do
+          def repo.to_s_with_command(command)
+            to_s
+          end
+          repo.publish('to_s_with_command', command)
+          queue.receive
+        end
+
+        its(["class"])     { should == repo.class.name }
+        its(["instance"])  { should == repo.pk_hash }
+        its(["message"])   { should == 'to_s_with_command' }
+        its(["arguments"]) { should == [] }
+        its(["command"])   { should == command.pk_hash }
       end
 
       context "complex arguments" do

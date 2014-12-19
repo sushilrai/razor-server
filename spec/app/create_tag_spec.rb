@@ -1,8 +1,9 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 require_relative '../../app'
 
-describe "create tag command" do
-  include Rack::Test::Methods
+describe Razor::Command::CreateTag do
+  include Razor::Test::Commands
 
   let(:app) { Razor::App }
   before :each do
@@ -14,29 +15,36 @@ describe "create tag command" do
       header 'content-type', 'application/json'
     end
 
-    let(:tag_hash) do
+    let(:command_hash) do
       { :name => "test",
         :rule => ["=", ["fact", "kernel"], "Linux"] }
     end
 
     def create_tag(input = nil)
-      input ||= tag_hash.to_json
-      post '/api/commands/create-tag', input
+      input ||= command_hash
+      command 'create-tag', input
     end
+
+    it_behaves_like "a command"
 
     it "should reject bad JSON" do
       create_tag '{"json": "not really..."'
-      last_response.status.should == 415
+      last_response.status.should == 400
       JSON.parse(last_response.body)["error"].should == 'unable to parse JSON'
     end
 
-    [
-     "foo", 100, 100.1, -100, true, false, [], ["name", "a"]
-    ].map(&:to_json).each do |input|
+    ["foo", 100, 100.1, -100, true, false].map(&:to_json).each do |input|
       it "should reject non-object inputs (like: #{input.inspect})" do
         create_tag input
-        last_response.status.should == 415
+        last_response.status.should == 400
       end
+    end
+
+    it "should fail if the name is an empty string" do
+      create_tag(name: '', rule: ['=', true, true])
+      last_response.status.should == 422
+      last_response.json['error'].should ==
+        'name must be at least 1 characters in length, but is only 0 characters long'
     end
 
     # Successful creation
@@ -53,7 +61,7 @@ describe "create tag command" do
     it "should create an tag record in the database" do
       create_tag
 
-      Razor::Data::Tag[:name => tag_hash[:name]].should be_an_instance_of Razor::Data::Tag
+      Razor::Data::Tag[:name => command_hash[:name]].should be_an_instance_of Razor::Data::Tag
     end
   end
 end

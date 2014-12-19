@@ -110,6 +110,7 @@ ISO image into its file system:
     {
       "name": "fedora19",
       "iso-url": "file:///tmp/Fedora-19-x86_64-DVD.iso"
+      "task": "puppet"
     }
 
 The second form is created by providing a `url` property when you create
@@ -119,7 +120,12 @@ nothing will be downloaded onto the Razor server:
     {
       "name": "fedora19",
       "url": "http://mirrors.n-ix.net/fedora/linux/releases/19/Fedora/x86_64/os/"
+      "task": "noop"
     }
+
+This command must be supplied a default task, which can be overridden at
+the policy level. If no task is to be used, reference the stock task
+"noop".
 
 ### Delete a repo
 
@@ -143,7 +149,6 @@ database. To create a task, clients post the following to the
     {
       "name": "redhat6",
       "os": "Red Hat Enterprise Linux",
-      "os_version": "6",
       "description": "A basic installer for RHEL6",
       "boot_seq": {
         "1": "boot_install",
@@ -159,7 +164,6 @@ The possible properties in the request are:
 
 name       | The name of the task; must be unique
 os         | The name of the OS; mandatory
-os_version | The version of the operating system
 description| Human-readable description
 boot_seq   | A hash mapping the boot counter or 'default' to a template
 templates  | A hash mapping template names to the actual ERB template text
@@ -244,19 +248,19 @@ will return with status code 400.
 
     {
       "name": "a policy",
-      "repo": { "name": "some_repo" },
-      "task": { "name": "redhat6" },
-      "broker": { "name": "puppet" },
+      "repo": "some_repo",
+      "task": "redhat6",
+      "broker": "puppet",
       "hostname": "host${id}.example.com",
       "root_password": "secret",
       "max_count": "20",
-      "before"|"after": { "name": "other policy" },
+      "before"|"after": "other policy",
       "node_metadata": { "key1": "value1", "key2": "value2" },
-      "tags": [{ "name": "existing_tag"},
+      "tags": ["existing_tag",
                { "name": "new_tag", "rule": ["=", "dollar", "dollar"]}]
     }
 
-The overall list of policies is ordered, and polcies are considered in that
+The overall list of policies is ordered, and policies are considered in that
 order. When a new policy is created, the entry `before` or `after` can be
 used to put the new policy into the table before or after another
 policy. If neither `before` or `after` are specified, the policy is
@@ -289,7 +293,7 @@ body like:
 
     {
       "name": "a policy",
-      "before"|"after": { "name": "other policy" }
+      "before"|"after": "other policy"
     }
 
 This will change the policy table so that `a policy` will appear before or
@@ -341,7 +345,7 @@ Policies can be deleted with the `delete-policy` command.  It accepts the
 name of a single policy:
 
     {
-      'name': 'my-policy'
+      "name": "my-policy"
     }
 
 Note that this does not affect the `installed` status of a node, and
@@ -354,7 +358,7 @@ A single node can be removed from the database with the `delete-node`
 command. It accepts the name of a single node:
 
     {
-      'name': 'node17'
+      "name": "node17"
     }
 
 Of course, if that node boots again at some point, it will be automatically
@@ -369,7 +373,7 @@ another policy. This command does not change its metadata or facts. Specify
 which node to unbind by sending the node's name in the body of the request
 
     {
-      'name': 'node17'
+      "name": "node17"
     }
 
 ### Set node IPMI credentials
@@ -386,10 +390,10 @@ conflicting update and partial update combination surprises for users.
 The structure of a request is:
 
     {
-      'name': 'node17',
-      'ipmi-hostname': 'bmc17.example.com',
-      'ipmi-username': null,
-      'ipmi-password': 'sekretskwirrl'
+      "name": "node17",
+      "ipmi-hostname": "bmc17.example.com",
+      "ipmi-username": null,
+      "ipmi-password": "sekretskwirrl"
     }
 
 The various IPMI fields can be null (representing no value, or the NULL
@@ -403,14 +407,11 @@ IPMI target.
 ### Reboot node
 
 Razor can request a node reboot through IPMI, if the node has IPMI credentials
-associated.  Both hard (power cycle) and soft (request OS reboot through
-ACPI).  This uses the standard IPMI mechanisms, and has the same limitations
--- including that soft shutdown support may be implemented by simulating error
-states such as overtemperature alerts by some vendors.
+associated.  This only supports hard power cycle reboots.
 
 This is applied in the background, and will run as soon as available execution
 slots are available for the task -- IPMI communication has some generous
-internal rate limits to prevent it overwhelming the machine.
+internal rate limits to prevent it overwhelming the network or host server.
 
 This background process is persistent: if you restart the Razor server before
 the command is executed, it will remain in the queue and the operation will
@@ -431,20 +432,12 @@ see power transitions in the record, or through the node object if polling.
 The format of the command is:
 
     {
-      "node": "node1",
-      "hard": false
+      "name": "node1",
     }
 
 The `node` field is the name of the node to operate on.
 
-The `hard` field is a boolean, or absent.  If it is present, and true, the
-reboot will be hard (eg: full power cycle, without any OS involvement).
-Otherwise it will be a soft reboot.  (Soft reboots require the OS to be
-listening, and may not work for all platforms, OS combinations, and
-especially, during installer or firmware boot states.)
-
-The RBAC pattern for this command is:
-`reboot-node:${node}:${hard ? 'hard' : 'soft'}`
+The RBAC pattern for this command is: `reboot-node:${node}`
 
 
 ### Set node desired power state
@@ -482,22 +475,22 @@ Metadata is a collection of key => value pairs (like facts).  Use the
 metadata. The request should look like:
 
     {
-        'node': 'node1',
-        'update': {                         # Add or update these keys
-            'key1': 'value1',
-            'key2': 'value2',
+        "node": "node1",
+        "update": {                         # Add or update these keys
+            "key1": "value1",
+            "key2": "value2",
             ...
         }
-        'remove': [ 'key3', 'key4', ... ],  # Remove these keys
-        'no_replace': true                  # Do not replace keys on
+        "remove": [ "key3", "key4", ... ],  # Remove these keys
+        "no_replace": true                  # Do not replace keys on
                                             # update. Only add new keys
     }
 
 or
 
     {
-        'node': 'node1',
-        'clear': true                       # Clear all metadata
+        "node": "node1",
+        "clear": true                       # Clear all metadata
     }
 
 As above, multiple update and/or removes can be done in the one command,
@@ -512,10 +505,10 @@ that allows for updating single keys on the command line or with a GET
 request with a simple data structure that looks like.
 
     {
-        'node'      : 'mode1',
-        'key'       : 'my_key',
-        'value'     : 'my_val',
-        'no_replace': true       #Optional. Will not replace existing keys
+        "node"      : "mode1",
+        "key"       : "my_key",
+        "value"     : "my_val",
+        "no_replace": true       #Optional. Will not replace existing keys
     }
 
 ### Remove Node Metadata
@@ -525,16 +518,40 @@ that allows for removing a single key OR all keys only on the command
 like or with a GET request with a simple datastructure that looks like:
 
     {
-        'node' : 'node1',
-        'key'  : 'my_key',
+        "node" : "node1",
+        "key"  : "my_key",
     }
 
 or
 
     {
-        'node' : 'node1',
-        'all'  : true,     # Removes all keys
+        "node" : "node1",
+        "all"  : true,     # Removes all keys
     }
+
+### Set Node Hardware Info
+
+When hardware is changed in a node, such as a network card being replaced,
+the Razor server may need to be informed so that it can correctly match
+the new hardware with the existing node definition.
+
+This command enables replacing the existing hardware info data with new
+data, making it possible to update the existing node record prior to
+booting the new node on the network. For example, to update `node172`
+with new hardware information:
+
+    {
+        "node": "node172",
+        "hw_info": {
+          "net0":   "78:31:c1:be:c8:00",
+          "net1":   "72:00:01:f2:13:f0",
+          "net2":   "72:00:01:f2:13:f1",
+          "serial": "xxxxxxxxxxx",
+          "asset":  "Asset-1234567890",
+          "uuid":   "Not Settable"
+        }
+    }
+
 
 ## Collections
 
@@ -584,6 +601,30 @@ name   | a human-readable name for the object
 
 If the reference object is in an array, the `obj_id` field serves as a unique
 identifier within the array.
+
+### Querying the node collection
+
+Nodes can be queried by the following items
+
+* `hostname`: a regular expression to match against hostnames; this
+  includes using part of a hostname, e.g., `hostname=foo` to get all nodes
+  whose hostname includes `foo`
+* the fields that are stored in the `hw_info` of a node, namely `mac`,
+  `serial`, `asset`, and `uuid`
+
+For example the UUID could be queried to return the associated node
+
+    /api/collections/nodes?uuid=9ad1e079-b9e3-347c-8b13-9b42cbf53a14'
+
+    {
+      "items": [
+        {
+            "id": "http://razor.example.com:8080/api/collections/nodes/node14",
+            "name": "node14",
+            "spec": "http://api.puppetlabs.com/razor/v1/collections/nodes/member"
+        }],
+      "spec": "http://api.puppetlabs.com/razor/v1/collections/nodes"
+    }
 
 ## Other things
 

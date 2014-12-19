@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 class Razor::Data::Broker < Sequel::Model
 
   one_to_many :policies
@@ -6,7 +7,7 @@ class Razor::Data::Broker < Sequel::Model
 
   serialize_attributes [
     ->(b){ b.name },               # serialize
-    ->(b){ Razor::BrokerType.find(b) } # deserialize
+    ->(b){ Razor::BrokerType.find(name: b) } # deserialize
   ], :broker_type
 
   # We have validation that we match our external files on disk, too.
@@ -22,18 +23,22 @@ class Razor::Data::Broker < Sequel::Model
       # Extra keys found in the data we were given are treated as errors,
       # since they are most likely typos, or targetting a broker other than
       # the current broker.
-      (configuration.keys - schema.keys).each do |additional|
-        errors.add(:configuration, "key '#{additional}' is not defined for this broker type")
+      if configuration.is_a?(Hash)
+        (configuration.keys - schema.keys).each do |additional|
+          errors.add(:configuration, _("key '%{additional}' is not defined for this broker type") % {additional: additional})
+        end
+      else
+        errors.add(:configuration, _("must be a Hash"))
       end
 
       # Required keys that are missing from the supplied configuration.
       schema.each do |key, details|
         next unless details['required']
         next if configuration.has_key? key
-        errors.add(:configuration, "key '#{key}' is required by this broker type, but was not supplied")
+        errors.add(:configuration, _("key '%{key}' is required by this broker type, but was not supplied") % {key: key})
       end
     else
-      errors.add(:broker_type, "'#{broker_type}' is not valid")
+      errors.add(:broker_type, _("'%{name}' is not valid") % {name: broker_type})
     end
   end
 

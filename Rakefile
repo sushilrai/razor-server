@@ -1,5 +1,9 @@
 require 'rake'
-require 'torquebox-rake-support'
+require 'yaml'
+
+task :default do
+  system("rake -T")
+end
 
 namespace :bundler do
   task :setup do
@@ -18,8 +22,7 @@ namespace :db do
     env = args[:env] || "development"
     Rake::Task['environment'].invoke(env)
 
-    require 'sequel/extensions/migration'
-    Sequel::Migrator.apply(Razor.database, "db/migrate")
+    sh "./bin/razor-admin -e #{env} migrate-database"
   end
 
   desc "Rollback the database"
@@ -36,12 +39,7 @@ namespace :db do
   task :nuke, :env do |cmd, args|
     env = args[:env] || "development"
     Rake::Task['environment'].invoke(env)
-    Razor.database.tables.each do |table|
-      Razor.database.run("DROP TABLE #{table} CASCADE")
-    end
-    # @todo lutter 2014-01-16: figure out a more sustainable way to
-    # clean out the database
-    Razor.database.run("DROP TYPE power_state")
+    sh "./bin/razor-admin -e #{env} reset-database"
   end
 
   desc "Reset the database"
@@ -49,16 +47,20 @@ namespace :db do
 end
 
 namespace :spec do
-  require 'rspec/core'
-  require 'rspec/core/rake_task'
+  begin
+    require 'rspec/core'
+    require 'rspec/core/rake_task'
 
-  task :reset_tests do
-    Rake::Task['db:reset'].invoke("test")
-  end
+    task :reset_tests do
+      Rake::Task['db:reset'].invoke("test")
+    end
 
-  desc "Run all specs"
-  RSpec::Core::RakeTask.new(:all => :reset_tests) do |t|
-    t.pattern = 'spec/**/*_spec.rb'
+    desc "Run all specs"
+    RSpec::Core::RakeTask.new(:all => :reset_tests) do |t|
+      t.pattern = 'spec/**/*_spec.rb'
+    end
+  rescue LoadError
+    # ignore
   end
 end
 
@@ -97,5 +99,71 @@ task :archive do
       dest_dir: pkgdir.to_s,
       package_without: %w[development test doc],
       package_gems: true)
+  end
+end
+
+
+# Support for our internal packaging toolchain.  Most people outside of Puppet
+# Labs will never actually need to deal with these.
+begin
+  load File.join(File.dirname(__FILE__), 'ext', 'packaging', 'packaging.rake')
+rescue LoadError
+end
+
+begin
+  @build_defaults ||= YAML.load_file('ext/build_defaults.yaml')
+  @packaging_url  = @build_defaults['packaging_url']
+  @packaging_repo = @build_defaults['packaging_repo']
+rescue
+  STDERR.puts "Unable to read the packaging repo info from ext/build_defaults.yaml"
+end
+
+namespace :package do
+  desc "Bootstrap packaging automation, e.g. clone into packaging repo"
+  task :bootstrap do
+    if File.exist?("ext/#{@packaging_repo}")
+      puts "It looks like you already have ext/#{@packaging_repo}. If you don't like it, blow it away with package:implode."
+    else
+      cd 'ext' do
+        %x{git clone #{@packaging_url}}
+      end
+    end
+  end
+
+  desc "Remove all cloned packaging automation"
+  task :implode do
+    rm_rf "ext/#{@packaging_repo}"
+  end
+
+  desc "Prepare the tree for TroqueBox distribution"
+  task :torquebox do
+    # This defaults to the JRuby used on our internal builders, if present, and
+    # then falls back to searching the path as it should.
+    jruby = (["/usr/local/share/pl-jruby/bin"] + ENV['PATH'].split(':')).find do |path|
+      File.executable?(File.join(path, 'jruby'))
+    end or raise "unable to locate JRuby to run bundler!"
+
+    jruby = File.join(jruby, 'jruby')
+
+    begin
+      rm_f "Gemfile.lock"
+      sh "#{jruby} -S bundle install --clean --no-cache --path vendor/bundle --without 'development test doc'"
+      rm_f ".bundle/install.log"
+    rescue
+      unless @tried_to_install_bundler
+        # Maybe the executable isn't installed in the parent, try and get it now.
+        sh "#{jruby} -S gem install bundler" rescue nil
+        @tried_to_install_bundler = true
+        retry
+      end
+
+      unless @retried and @retried > 9
+        @retried = (@retried || 0) + 1
+        puts "gonna just retry that there bundle install against network errors"
+        retry
+      end
+
+      raise
+    end
   end
 end

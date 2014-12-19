@@ -1,8 +1,9 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 require_relative '../../app'
 
-describe "create task command" do
-  include Rack::Test::Methods
+describe Razor::Command::CreateTask do
+  include Razor::Test::Commands
 
   let(:app) { Razor::App }
   before :each do
@@ -14,7 +15,7 @@ describe "create task command" do
       header 'content-type', 'application/json'
     end
 
-    let(:task_hash) do
+    let(:command_hash) do
       { :name => "task",
         :os => "SomeOS",
         :templates => { "name" => "erb template" },
@@ -22,48 +23,34 @@ describe "create task command" do
     end
 
     def create_task(input = nil)
-      input ||= task_hash.to_json
-      post '/api/commands/create-task', input
+      command 'create-task', (input || command_hash)
     end
+
+    it_behaves_like "a command"
 
     it "should reject bad JSON" do
       create_task '{"json": "not really..."'
-      last_response.status.should == 415
+      last_response.status.should == 400
       JSON.parse(last_response.body)["error"].should == 'unable to parse JSON'
     end
 
-    [
-      "foo", 100, 100.1, -100, true, false, [], ["name", "a"]
-    ].map(&:to_json).each do |input|
+    ["foo", 100, 100.1, -100, true, false].map(&:to_json).each do |input|
       it "should reject non-object inputs (like: #{input.inspect})" do
         create_task input
-        last_response.status.should == 415
+        last_response.status.should == 400
       end
     end
 
-    # Spot check that validation errors are surfaced as 400
-    it "should fail if name is missing" do
-      task_hash.delete(:name)
-      create_task
-      last_response.status.should == 400
-    end
-
-    it "should fail if os is missing" do
-      task_hash.delete(:os)
-      create_task
-      last_response.status.should == 400
-    end
-
     it "should fail if boot_seq hash has keys that are strings != 'default'" do
-      task_hash[:boot_seq]["sundays"] = "local"
+      command_hash[:boot_seq]["sundays"] = "local"
       create_task
-      last_response.status.should == 400
+      last_response.status.should == 422
     end
 
     it "should fail if templates is not a hash" do
-      task_hash[:templates] = ["stuff"]
+      command_hash[:templates] = ["stuff"]
       create_task
-      last_response.status.should == 400
+      last_response.status.should == 422
     end
 
     # Successful creation
@@ -79,7 +66,7 @@ describe "create task command" do
     it "should create an repo record in the database" do
       create_task
 
-      Razor::Data::Task[:name => task_hash[:name]].should be_an_instance_of Razor::Data::Task
+      Razor::Data::Task[:name => command_hash[:name]].should be_an_instance_of Razor::Data::Task
     end
   end
 end

@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 require_relative '../../app'
 
@@ -61,14 +62,67 @@ describe "provisioning API" do
       @mac = @node.hw_hash["mac"].first
     end
 
-    it "without policy should boot the microkernel" do
-      get "/svc/boot?net0=#{@mac}"
-      assert_booting("Microkernel")
-      @node.reload
-      @node.log.last["event"].should == "boot"
-      @node.log.last["task"].should == "microkernel"
-      @node.log.last["template"].should == "boot"
-      @node.log.last["repo"].should == "microkernel"
+    describe "without policy" do
+      def assert_microkernel_boot
+        assert_booting("Microkernel")
+        @node.reload
+
+        entry = @node.log.last
+        entry.should_not be_nil
+        entry.delete('timestamp').should_not be_nil
+        entry.should == {
+          "severity" => "info",
+          "event" => "boot",
+          "task" => "microkernel",
+          "template" => "boot",
+          "repo" => "microkernel"
+        }
+      end
+
+      it "boots the microkernel for a node neither installed nor registered" do
+        get "/svc/boot?net0=#{@mac}"
+        assert_microkernel_boot
+      end
+
+      it "boots the microkernel for an installed node that is not registered" do
+        @node.installed = '+test'
+        @node.installed_at = Time.now
+        @node.save
+
+        get "/svc/boot?net0=#{@mac}"
+        assert_microkernel_boot
+      end
+
+      it "boots the microkernel for a registered node that is not installed" do
+        @node.facts = { 'f1' => 'a' }
+        @node.save
+        @node.registered?.should be_true
+
+        get "/svc/boot?net0=#{@mac}"
+        assert_microkernel_boot
+      end
+
+      it "boots a node that is registered and installed locally" do
+        @node.installed = '+test'
+        @node.installed_at = Time.now
+        @node.facts = { 'f1' => 'a' }
+        @node.save
+        @node.registered?.should be_true
+
+        get "/svc/boot?net0=#{@mac}"
+        assert_booting("Boot local")
+
+        @node.reload
+        entry = @node.log.last
+        entry.delete("timestamp").should_not be_nil
+        entry.should == {
+          "severity" => "info",
+          "repo" => "microkernel",
+          "event" => "boot",
+          "task" => "noop",
+          "template" => "boot_local"
+        }
+      end
     end
 
     describe "booting repeatedly with policy" do
@@ -305,6 +359,11 @@ describe "provisioning API" do
   describe "node checkin" do
     hw_id = "001122334455"
 
+    def checkin(node, facts)
+      header 'Content-Type', 'application/json'
+      post "/svc/checkin/#{node.id}", { "facts" => facts }.to_json
+    end
+
     it "should return 400 for non-json requests" do
       header 'Content-Type', 'text/plain'
       post "/svc/checkin/42", "{}"
@@ -331,7 +390,7 @@ describe "provisioning API" do
     end
 
     it "should return 200 if tag evaluation fails and log an error" do
-      node = Fabricate(:node)
+      node = Fabricate(:node_with_facts)
       # This will cause a RuleEvaluationError since there is no 'none' fact
       # in the checkin
       tag = Fabricate(:tag, :rule => ["=", ["fact", "none"], "1"])
@@ -345,6 +404,137 @@ describe "provisioning API" do
 
       node.reload
       node.log.last["severity"].should == "error"
+    end
+
+    it "should update the hw_info" do
+      Razor.config['match_nodes_on'] = ['mac', 'serial']
+      Razor.config['facts.match_on'] = ['/f\d+/']
+
+      node = Fabricate(:node, :hw_info => [ 'serial=1234' ])
+
+      header 'Content-Type', 'application/json'
+      body = { "facts" => { "serialnumber" => "1234",
+                            "f1" => "a",
+                            "g1" => "b",
+                            "macaddress_eth0" => "de:ad:be:ef:00:01",
+                            "macaddress_eth1" => "de:ad:be:ef:00:02"} }.to_json
+      post "/svc/checkin/#{node.id}", body
+
+      last_response.status.should == 200
+      last_response.json.should == { "action" => "none" }
+
+      node.reload
+      node.hw_info.should == ["fact_f1=a",
+                              "mac=de-ad-be-ef-00-01", "mac=de-ad-be-ef-00-02",
+                              "serial=1234"]
+    end
+
+    describe "with multiple nodes" do
+      before(:each) do
+        Razor.config['match_nodes_on'] = ['serial']
+        Razor.config['facts.match_on'] = ['/f\d+/']
+      end
+
+      it "should merge nodes into one that is registered" do
+        n1 = Fabricate(:node, :hw_info => [ 'serial=1', 'fact_f1=a' ],
+                       :facts => { "f1" => "a" })
+        n2 = Fabricate(:node, :hw_info => [ 'serial=2' ])
+        n3 = Fabricate(:node, :hw_info => [ 'serial=2' ])
+
+        header 'Content-Type', 'application/json'
+        body = { "facts" => { "serialnumber" => "2",
+                              "f1" => "a"} }.to_json
+        post "/svc/checkin/#{n2.id}", body
+
+        last_response.status.should == 200
+        last_response.json.should == { "action" => "none" }
+
+        n1.reload
+        n1.hw_info.should == ["fact_f1=a", "serial=2"]
+        Node[n2.id].should be_nil
+        Node[n3.id].should be_nil
+      end
+
+      it "should merge unregistered nodes into one of them" do
+        nodes = [Fabricate(:node, :hw_info => [ 'serial=1', 'fact_f1=a' ]),
+                 Fabricate(:node, :hw_info => [ 'serial=2' ]),
+                 Fabricate(:node, :hw_info => [ 'serial=2' ])]
+
+        header 'Content-Type', 'application/json'
+        body = { "facts" => { "serialnumber" => "2",
+                              "f1" => "a"} }.to_json
+        post "/svc/checkin/#{nodes[1].id}", body
+
+        last_response.status.should == 200
+        last_response.json.should == { "action" => "none" }
+
+        new_nodes = nodes.map { |n| Node[n.id] }.compact
+
+        new_nodes.size.should == 1
+        new_nodes[0].registered?.should be_true
+      end
+
+      it "should fail when multiple registered nodes match the checkin for an unregistered one" do
+        nodes = [Fabricate(:node, :hw_info => [ 'serial=1', 'fact_f1=a' ],
+                           :facts => { 'f1' => 'a' }),
+                 Fabricate(:node, :hw_info => [ 'serial=2' ],
+                           :facts => { 'g1' => 'x' }),
+                 Fabricate(:node, :hw_info => [ 'serial=2' ])]
+
+        header 'Content-Type', 'application/json'
+        body = { "facts" => { "serialnumber" => "2",
+                              "f1" => "a"} }.to_json
+        post "/svc/checkin/#{nodes[2].id}", body
+
+        last_response.status.should == 400
+
+        new_nodes = nodes.map { |n| Node[n.id] }.compact
+        new_nodes.size.should == 3
+      end
+
+      it "should succeed when multiple registered nodes match the checkin for a registered one" do
+        # This is a side-effect of only calling Node.register on
+        # unregistered nodes. It may (or may not) be desirable to always
+        # call register on such nodes in the future; for a real node,
+        # Node.lookup, called from /svc/boot would have raised an error
+        # already and the node would have never gotten this far
+        nodes = [Fabricate(:node, :hw_info => [ 'serial=1', 'fact_f1=a' ],
+                           :facts => { 'f1' => 'a' }),
+                 Fabricate(:node, :hw_info => [ 'serial=2' ],
+                           :facts => { 'g1' => 'x' }),
+                 Fabricate(:node, :hw_info => [ 'serial=2' ])]
+
+        header 'Content-Type', 'application/json'
+        body = { "facts" => { "serialnumber" => "2",
+                              "f1" => "a"} }.to_json
+        post "/svc/checkin/#{nodes[1].id}", body
+
+        last_response.status.should == 200
+
+        new_nodes = nodes.map { |n| Node[n.id] }.compact
+        new_nodes.size.should == 3
+      end
+    end
+
+    describe "of an installed node" do
+      it "should reboot and not bind when the node has no policy" do
+        tag = Fabricate(:tag)
+        policy = Fabricate(:policy, :tags => [ tag ])
+        node = Fabricate(:installed_node, :hw_hash => { 'serial' => '1' })
+        installed = node.installed
+
+        checkin node, 'serialnumber' => '1'
+
+        last_response.status.should == 200
+        last_response.json['action'].should == 'reboot'
+
+        node.reload
+        node.registered?.should be_true
+        node.installed.should == installed
+        node.policy.should be_nil
+        # Checkin will not try to evaluate tags on installed nodes
+        node.tags.should be_empty
+      end
     end
   end
 

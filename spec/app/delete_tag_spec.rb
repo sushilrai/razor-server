@@ -1,10 +1,13 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 require_relative '../../app'
 
-describe "delete-tag" do
-  include Rack::Test::Methods
+describe Razor::Command::DeleteTag do
+  include Razor::Test::Commands
 
   let(:app) { Razor::App }
+  let(:tag) { Fabricate(:tag) }
+  let(:command_hash) { { "name" => tag.name } }
   before :each do
     authorize 'fred', 'dead'
   end
@@ -12,12 +15,14 @@ describe "delete-tag" do
   def delete_tag(name, force=nil)
     params = { "name" => name }
     params["force"] = force unless force.nil?
-    post '/api/commands/delete-tag', params.to_json
+    command 'delete-tag', params
   end
 
   before :each do
     header 'content-type', 'application/json'
   end
+
+  it_behaves_like "a command"
 
   it "should delete an existing tag" do
     tag = Fabricate(:tag)

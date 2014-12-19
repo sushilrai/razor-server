@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 require 'simplecov'
 SimpleCov.start do
   %w{/spec/ .erb vendor/}.map {|f| add_filter f }
@@ -5,6 +6,8 @@ end
 
 require 'fabrication'
 require 'faker'
+
+Dir.glob(File.join(File::dirname(__FILE__), 'shared_examples', '*.rb')).each {|f| require f }
 
 require 'rack/test'
 require 'json'
@@ -31,7 +34,24 @@ class Rack::MockResponse
   end
 
   def json
-    JSON::parse(body)
+    parse_body if @json.nil?
+    @json
+  end
+
+  def command
+    if @command.nil?
+      parse_body if @json.nil?
+      if @command_url
+        @command = Razor::Data::Command[@command_url.split('/').last]
+      end
+    end
+    @command
+  end
+
+  private
+  def parse_body
+    @json = JSON::parse(body)
+    @command_url = @json.delete('command')
   end
 end
 
@@ -53,6 +73,7 @@ class Razor::Config
 
   def reset!
     @facts_blacklist_rx = nil
+    @facts_match_on_rx = nil
     @values['match_nodes_on'] = Razor::Config::HW_INFO_KEYS
   end
 end
@@ -68,6 +89,20 @@ end
 
 def use_broker_fixtures
   Razor.config["broker_path"] = BROKER_FIXTURE_PATH
+end
+
+# Make sure our migration is current, or fail hard.
+Sequel.extension :migration
+unless Sequel::Migrator.is_current?(Razor.database, File.join(File::dirname(__FILE__), '..', 'db', 'migrate'))
+  puts <<EOT
+Hey.  Your database migrations are not current!  Without them being at the
+exact expected version you can expect all sorts of random looking failures.
+
+You should rerun the migrations now.  That will fix things and stop this
+error from getting in your way.  Enjoy.
+
+EOT
+  exit 1
 end
 
 # Restore the config after each test
@@ -118,9 +153,48 @@ class TorqueBox::FallbackLogger
   end
 end
 
+# Our own method(s) for testing commands. These will automatically include
+# Rack::Test::Methods
+module Razor::Test
+  module Commands
+    include Rack::Test::Methods
+
+    # A helper to test commands. It translates the +name+ to the correct
+    # command URL, and turns params into JSON
+    #
+    # If the command succeeds, check that the return code is 202, and that
+    # an entry was made into the command log, and check its sanity
+    def command(name, params, opts = {})
+      post "/api/commands/#{name}", params.to_json
+      status = (opts[:status] || 'finished').to_s
+      if last_response.successful?
+        last_response.status.should == 202
+        last_response.command.should_not be_nil
+        last_response.command.command.should == name.to_s
+        cmd = Razor::Command.find(name: name)
+        params = Hash[params.map{|(k,v)| [k.to_s,v]}]
+        last_response.command.params.should == stringify_keys(cmd.conform!(params))
+        last_response.command.status.should == status
+      end
+    end
+
+    def stringify_keys(hash)
+      hash.inject({}) do |memo, (key, value)|
+        if value.is_a?(Hash)
+          memo[key.to_s] = stringify_keys(value)
+        else
+          memo[key.to_s] = value
+        end
+        memo
+      end
+    end
+  end
+end
+
 # Conveniences for dealing with model objects
 Node   = Razor::Data::Node
 Tag    = Razor::Data::Tag
 Repo   = Razor::Data::Repo
 Policy = Razor::Data::Policy
 Broker = Razor::Data::Broker
+Command= Razor::Data::Command

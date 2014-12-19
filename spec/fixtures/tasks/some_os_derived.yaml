@@ -1,5 +1,0 @@
----
-
-base: some_os
-os_version: 4
-description: Derived Some OS Installer

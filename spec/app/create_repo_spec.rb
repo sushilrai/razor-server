@@ -1,10 +1,18 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 require_relative '../../app'
 
-describe "command and query API" do
-  include Rack::Test::Methods
+describe Razor::Command::CreateRepo do
+  include Razor::Test::Commands
 
   let(:app) { Razor::App }
+  let(:command_hash) do
+    {
+        "name" => "magicos",
+        "iso-url" => "file:///dev/null",
+        "task"    => "some_os",
+    }
+  end
   before :each do
     authorize 'fred', 'dead'
   end
@@ -14,40 +22,36 @@ describe "command and query API" do
       header 'content-type', 'application/json'
     end
 
-    it "should reject bad JSON" do
-      post '/api/commands/create-repo', '{"json": "not really..."'
-      last_response.status.should == 415
-      JSON.parse(last_response.body)["error"].should == 'unable to parse JSON'
+    describe Razor::Command::CreateRepo do
+      it_behaves_like "a command", status: 'pending'
     end
 
-    [
-      "foo", 100, 100.1, -100, true, false, [], ["name", "a"]
-    ].map(&:to_json).each do |input|
+    it "should reject bad JSON" do
+      post '/api/commands/create-repo', '{"json": "not really..."'
+      last_response.json['error'].should =~ /unable to parse JSON/
+      last_response.status.should == 400
+    end
+
+    ["foo", 100, 100.1, -100, true, false].map(&:to_json).each do |input|
       it "should reject non-object inputs (like: #{input.inspect})" do
         post '/api/commands/create-repo', input
-        last_response.status.should == 415
+        last_response.json['error'].should =~ /unable to parse JSON/
+        last_response.status.should == 400
+      end
+    end
+
+    [[], ["name", "a"]].map(&:to_json).each do |input|
+      it "should reject non-object inputs (like: #{input.inspect})" do
+        post '/api/commands/create-repo', input
+        last_response.json['error'].should =~ /expected object but got array/
+        last_response.status.should == 422
       end
     end
 
     it "should fail with only bad key present in input" do
       post '/api/commands/create-repo', {"cats" => "> dogs"}.to_json
-      last_response.status.should == 400
-      last_response.mime_type.downcase.should == 'application/json'
-      # @todo danielp 2013-06-26: should do something to assert we got a good
-      # error message or messages out of the system; see comments in app.rb
-      # for details about why that is delayed.
-    end
-
-    it "should fail if only the name is given" do
-      post '/api/commands/create-repo', {"name" => "magicos"}.to_json
-      last_response.status.should == 400
-      last_response.mime_type.downcase.should == 'application/json'
-    end
-
-    it "should fail if only the iso_url is given" do
-      post '/api/commands/create-repo', {"iso_url" => "file:///dev/null"}.to_json
-      last_response.status.should == 400
-      last_response.mime_type.downcase.should == 'application/json'
+      last_response.json['error'].should =~ /name is a required attribute, but it is not present/
+      last_response.status.should == 422
     end
 
     it "should fail if an extra key is given, if otherwise good" do
@@ -55,30 +59,73 @@ describe "command and query API" do
         "name"      => "magicos",
         "iso-url"   => "file:///dev/null",
         "banana"    => "> orange",
+        "task"      => "some_os",
       }.to_json
-      last_response.status.should == 400
-      last_response.mime_type.downcase.should == 'application/json'
+      last_response.json['error'].should =~ /extra attribute banana was present in the command, but is not allowed/
+      last_response.status.should == 422
     end
 
     it "should return the 202, and the URL of the repo" do
-      post '/api/commands/create-repo', {
+      command 'create-repo', {
         "name" => "magicos",
-        "iso-url" => "file:///dev/null"
-      }.to_json
+        "iso-url" => "file:///dev/null",
+        "task"    => "some_os",
+      }, :status => :pending
 
       last_response.status.should == 202
-      last_response.mime_type.downcase.should == 'application/json'
 
-      data = JSON.parse(last_response.body)
+      data = last_response.json
       data.keys.should =~ %w[id name spec]
       data["id"].should =~ %r'/api/collections/repos/magicos\Z'
     end
 
+    context "with an existing repo" do
+      let :repo do Fabricate(:repo) end
+
+      it "should return 202 if the repo is identical" do
+        data = {
+          'name'    => repo.name,
+          'iso-url' => repo.iso_url,
+          'task'    => repo.task.name
+        }
+
+        command 'create-repo', data
+
+        last_response.json['name'].should == repo.name
+        last_response.status.should == 202
+      end
+
+      it "should return 409 if the repo is not identical" do
+        data = {
+          'name' => repo.name,
+          'url'  => repo.iso_url,
+          'task' => repo.task.name
+        }
+
+        command 'create-repo', data
+
+        last_response.json['error'].should ==
+          "The repo #{repo.name} already exists, and the iso_url, url fields do not match"
+        last_response.status.should == 409
+      end
+    end
+
     it "should create an repo record in the database" do
-      post '/api/commands/create-repo', {
+      command 'create-repo', {
         "name" => "magicos",
-        "iso-url" => "file:///dev/null"
-      }.to_json
+        "iso-url" => "file:///dev/null",
+        "task"    => "some_os",
+      }, :status => :pending
+
+      Repo.find(:name => "magicos").should be_an_instance_of Repo
+    end
+
+    it "should conform to allow task-name long form" do
+      command 'create-repo', {
+          "name" => "magicos",
+          "iso-url" => "file:///dev/null",
+          "task"    => {'name' => 'some_os'},
+      }, :status => :pending
 
       Repo.find(:name => "magicos").should be_an_instance_of Repo
     end

@@ -1,13 +1,18 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 require_relative '../../app'
 
-describe "policy-add-tag" do
-  include Rack::Test::Methods
+describe Razor::Command::AddPolicyTag do
+  include Razor::Test::Commands
 
   let(:app) { Razor::App }
 
   def add_policy_tag(name=nil, tag=nil, rule=nil)
-    post '/api/commands/add-policy-tag', { "name" => name, "tag" => tag, "rule" => rule }.to_json
+    data = {}
+    name and data['name'] = name
+    tag and data['tag'] = tag
+    rule and data['rule'] = rule
+    command 'add-policy-tag', data
   end
 
   context "/api/commands/policy-add-tag" do
@@ -18,6 +23,15 @@ describe "policy-add-tag" do
 
     let(:policy) { Fabricate(:policy_with_tag) }
     let(:tag)    { Fabricate(:tag) }
+    let(:command_hash) do
+      {
+          :name => policy.name,
+          :tag => policy.tags.first.name,
+          :rule => policy.tags.first.rule
+      }
+    end
+
+    it_behaves_like "a command"
 
     it "should advise that that tag is already on policy" do
       count = policy.tags.count
@@ -50,23 +64,7 @@ describe "policy-add-tag" do
       tag_name = 'another_tag'
       add_policy_tag(policy.name, tag_name)
       policy.tags(true).count.should == count
-      last_response.status.should == 400
-    end
-
-    it "should fail with no policy name" do
-      add_policy_tag(nil, tag.name)
-      last_response.status.should == 400
-      last_response.json?.should be_true
-      last_response.json.keys.should =~ %w[error]
-      last_response.json["error"].should =~ /Supply policy name/
-    end
-
-    it "should fail with no tag name" do
-      add_policy_tag(policy.name)
-      last_response.status.should == 400
-      last_response.json?.should be_true
-      last_response.json.keys.should =~ %w[error]
-      last_response.json["error"].should =~ /name of the tag/
+      last_response.status.should == 422
     end
   end
 end

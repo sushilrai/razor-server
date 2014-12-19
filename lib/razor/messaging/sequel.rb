@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 # This allows Ruby to parse the Razor::Messaging::Sequel class without
 # Kernel::include-ing the ../../razor and ../../razor/initialize files.
 # Loading those files here causes a race condition when trying to load the
@@ -98,12 +99,16 @@ class Razor::Messaging::Sequel < TorqueBox::Messaging::MessageProcessor
   def process!(message)
     body = message.decode
     body.is_a? Hash or
-      raise MessageViolatesConsistencyChecks, "message body must be a map"
+      raise MessageViolatesConsistencyChecks, _("message body must be a map")
     body.has_key?('message') or
-      raise MessageViolatesConsistencyChecks, "message name must be present"
+      raise MessageViolatesConsistencyChecks, _("message name must be present")
 
     class_constant = find_razor_data_class(body['class'])
     instance       = find_instance_in_class(class_constant, body['instance'])
+    if body['command']
+      # A command is optional for background processing
+      command        = find_command(body['command'])
+    end
     if instance.nil?
       # @todo danielp 2013-07-05: I genuinely don't know the correct way to
       # handle this.  For the moment we raise an error that will cause the
@@ -112,11 +117,16 @@ class Razor::Messaging::Sequel < TorqueBox::Messaging::MessageProcessor
       # I guess, would be the root cause.
       #
       # Is that really the right strategy, though?
-      raise "Unable to find #{class_constant.name} with pk #{body['instance'].inspect}"
+      raise _("Unable to find %{class} with pk %{pk}") %
+        {class: class_constant.name, pk: body['instance'].inspect}
     else
       # We might as well be tolerant of our inputs, and treat a nil/missing
       # arguments value as "no arguments"
-      instance.public_send(body['message'], *Array(body['arguments']))
+      if command
+        instance.public_send(body['message'], command, *Array(body['arguments']))
+      else
+        instance.public_send(body['message'], *Array(body['arguments']))
+      end
     end
 
     # We don't have anything to send anyone at this point.
@@ -129,6 +139,11 @@ class Razor::Messaging::Sequel < TorqueBox::Messaging::MessageProcessor
       body = update_body_with_exception(body, exception)
     else
       body = update_body_with_exception({'bad_message' => body}, exception)
+    end
+
+    if command
+      command.add_exception(exception, body["retries"])
+      command.save
     end
 
     queue = fetch('/queues/razor/sequel-instance-messages')
@@ -154,6 +169,7 @@ class Razor::Messaging::Sequel < TorqueBox::Messaging::MessageProcessor
       # form of error recovery for the class, if it was even possible.
       @logger.warn("calling message #{message.getJMSMessageID} dead: #{exception}")
       @logger.debug("dead message #{message.getJMSMessageID} content as EDN: #{body.to_edn}")
+      command.store('failed') if command
     else
       # Queue for a later retry.
       delay = delay_for_retry(body["retries"])
@@ -215,22 +231,20 @@ class Razor::Messaging::Sequel < TorqueBox::Messaging::MessageProcessor
   # This only works with normal classes assigned to a constant
   def find_razor_data_class(fullname)
     fullname.is_a? String or
-      raise MessageViolatesConsistencyChecks, "`class` must be a string"
+      raise MessageViolatesConsistencyChecks, _("`class` must be a string")
 
     base, _, name = fullname.rpartition('::')
 
     base == 'Razor::Data' and not name.nil? and not name.empty? or
-      raise MessageViolatesConsistencyChecks, "#{fullname.inspect} is not under Razor::Data namespace"
+      raise MessageViolatesConsistencyChecks, _("%{name} is not under Razor::Data namespace") % {name: fullname.inspect}
 
     # rescue false handles incorrectly formatted constant names, such as ''
     # or 'foo', translating their error message into our permanent failure
     found = Razor::Data.const_defined?(name) rescue false
-    found or
-      raise MessageViolatesConsistencyChecks, "#{fullname.inspect} is not a valid class name"
+    found or raise MessageViolatesConsistencyChecks, _("%{name} is not a valid class name") % {name: fullname.inspect}
 
     constant = Razor::Data.const_get(name)
-    constant.is_a?(Class) or
-      raise MessageViolatesConsistencyChecks, "#{fullname.inspect} is a #{constant.class}, when Class was expected"
+    constant.is_a?(Class) or raise MessageViolatesConsistencyChecks, _("%{name} is a %{class}, when Class was expected") % {name: fullname.inspect, class: constant.class}
 
     return constant
   end
@@ -244,11 +258,23 @@ class Razor::Messaging::Sequel < TorqueBox::Messaging::MessageProcessor
     # extra weight required to make this more robust without proof that it
     # poses some longer-term problem.
     pk_hash.is_a?(Hash) or
-      raise MessageViolatesConsistencyChecks, "instance ID is #{pk_hash.nil? ? 'nil' : pk_hash.class.name}, when Hash was expected"
+      raise MessageViolatesConsistencyChecks, _("instance ID is %{pk}, when Hash was expected") % {pk: pk_hash.nil? ? 'nil' : pk_hash.class.name}
 
     # This is the recommended way to perform lookup according to the Sequel
     # docs, so we respect their wishes.
     class_constant[pk_hash]
+  end
+
+  # Find the Razor::Data::Command with the given primary key hash
+  def find_command(pk_hash)
+    pk_hash.is_a?(Hash) or
+      raise MessageViolatesConsistencyChecks, _("command ID is %{pk}, when Hash was expected") % {pk: pk_hash.nil? ? 'nil' : pk_hash.class.name}
+    pk_hash.empty? and
+      raise MessageViolatesConsistencyChecks, _("command ID must be a nonempty Hash but is an empty Hash")
+    command = Razor::Data::Command[pk_hash]
+    command.nil? and
+      raise MessageViolatesConsistencyChecks, _("Unable to find Razor::Data::Command with pk %{pk}") % {pk: pk_hash.inspect}
+    return command
   end
 
   # A Sequel::Model plugin that integrates the `publish` method directly
@@ -292,33 +318,45 @@ class Razor::Messaging::Sequel < TorqueBox::Messaging::MessageProcessor
       # connection to the message queue service to be available.
       #
       # @param message   [String, Symbol] the message to deliver (see Object#public_send)
-      # @param arguments [...] the arguments for the message (see Object#public_send)
+      # @param arguments [...] the arguments for the message (see
+      #                  Object#public_send) If the first argument is a
+      #                  Razor::Data::Command, the messaging machinery will
+      #                  update it automatically with error messages if
+      #                  there are any
       #
       # @return self, to allow chaining
       def publish(message, *arguments)
-        message.is_a? String or message.is_a? Symbol or
-          raise TypeError, "message is a #{message.class} where String or Symbol was expected"
+        block_given? and raise ArgumentError, _("blocks cannot be published")
 
-        block_given? and raise ArgumentError, "blocks cannot be published"
+        count = arguments.count
+        command = arguments.shift if arguments.first.is_a?(Razor::Data::Command)
+        message.is_a? String or message.is_a? Symbol or
+          raise TypeError, _("message is a %{class} where String or Symbol was expected") % {class: message.class}
 
         # This will raise NameError if the message is not accepted locally,
         # which completes our contract of raising on error.
         arity = method(message).arity
         if arity < 0
-          raise ArgumentError, "variable number of arguments sending #{self.class}.#{message}"
-        elsif arity != arguments.count
-          raise ArgumentError, "wrong number of arguments sending #{self.class}.#{message} (#{arguments.count} for #{arity}"
+          raise ArgumentError, _("variable number of arguments sending %{class}.%{message}") % {class: self.class, message: message}
+            elsif arity != count
+          raise ArgumentError, _("wrong number of arguments sending %{class}.%{message} (%{count} for %{arity}") % {class: self.class, message: message, count: count, arity: arity}
         end
 
         # Looks good, publish it; EDN encoding has reasonably good fidelity
         # for transmitting Ruby values over the wire, and this allows us to
         # enforce that during sending.
-        fetch('/queues/razor/sequel-instance-messages').publish({
+        msg = {
             'class'     => self.class.name,
             'instance'  => self.pk_hash,
             'message'   => message,
             'arguments' => arguments
-          }, :encoding => :edn)
+        }
+        if command
+          command.store('pending') if command.id.nil?
+          msg['command'] = command.pk_hash
+        end
+        fetch('/queues/razor/sequel-instance-messages').
+          publish(msg, :encoding => :edn)
 
         return self
       end

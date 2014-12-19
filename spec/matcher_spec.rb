@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 require_relative 'spec_helper'
 
 describe Razor::Matcher do
@@ -75,6 +76,16 @@ describe Razor::Matcher do
     it "fact should return the default if fact not found" do
       match("fact", "f1", false, { "f1" => true }).should == true
       match("fact", "f2", false, { "f1" => true }).should == false
+    end
+
+    ["fact", "metadata", "state"].each do |func|
+      it "#{func} should work if nil is passed in for #{func}" do
+        m = Matcher.new([func, "f1"])
+        expect do
+          # This used to fail trying to call nil.[]
+          m.match?({})
+        end.to  raise_error Razor::Matcher::RuleEvaluationError
+      end
     end
 
     describe "tag function" do
@@ -160,6 +171,20 @@ describe Razor::Matcher do
       match("<",  4,   3  ).should == false
       match("lt", 3.5, 3.6).should == true
     end
+
+    it "lower should behave" do
+      match("=", ["lower", "ABC"], "abc").should == true
+      match("=", ["lower", "ABC"], "ABC").should_not == true
+      match("=", ["lower", ["fact", "f1"]], "abc",
+            { "f1" => "ABC" }).should == true
+    end
+
+    it "upper should behave" do
+      match("=", ["upper", "abc"], "ABC").should == true
+      match("=", ["upper", "abc"], "abc").should_not == true
+      match("=", ["upper", ["fact", "f1"]], "ABC",
+            { "f1" => "abc" }).should == true
+    end
   end
 
   describe "#valid?" do
@@ -233,6 +258,20 @@ describe Razor::Matcher do
       Matcher.new(["gt", true, 3]).should_not be_valid
     end
 
+    it "should require string for lower" do
+      Matcher.new(["=", ["lower", "ABC"], "abc"]).should be_valid
+      Matcher.new(["=", ["lower", 1], "abc"]).should_not be_valid
+      expect { match("=", ["lower", ["fact", "f1"]], "123", { "f1" => 123 }) }.
+          to raise_error(Razor::Matcher::RuleEvaluationError, /argument to 'lower' should be a string but was Fixnum/)
+    end
+
+    it "should require string for upper" do
+      Matcher.new(["=", ["upper", "abc"], "abc"]).should be_valid
+      Matcher.new(["=", ["upper", 1], "abc"]).should_not be_valid
+      expect { match("=", ["upper", ["fact", "f1"]], "123", { "f1" => 123 }) }.
+          to raise_error(Razor::Matcher::RuleEvaluationError, /argument to 'upper' should be a string but was Fixnum/)
+    end
+
     it "should require that top-level functions return booleans" do
       Matcher.new(["=",true, false]).should be_valid
       Matcher.new(["!=",true, false]).should be_valid
@@ -272,6 +311,24 @@ describe Razor::Matcher do
       Matcher.new(["+",1, 1]).should_not be_valid
       Matcher.new(["-",true, false]).should_not be_valid
     end
+  end
+
+  it "should return a reasonable message when datatype doesn't match" do
+    m = Matcher.new([">=", 1, ["fact", "processorcount"]])
+    m.should_not be_valid
+    m.errors.should == ["could return incompatible datatype(s) from function 'fact' ([String, TrueClass, FalseClass, NilClass]) for argument 1. Function '>=' expects ([Numeric])"]
+  end
+
+  it "should return a reasonable message when root datatype doesn't match" do
+    m = Matcher.new(["fact", "processorcount"])
+    m.should_not be_valid
+    m.errors.should == ["could return incompatible datatype(s) from function 'fact' ([String, Numeric, NilClass]). Rule expects ([TrueClass, FalseClass])"]
+  end
+
+  it "should return a reasonable message when non-array datatype doesn't match" do
+    m = Matcher.new([">=", 1, "three"])
+    m.should_not be_valid
+    m.errors.should == ["attempts to pass \"three\" of type String to '>=' for argument 1, but only [Numeric] are accepted"]
   end
 
   it "should handle nested evaluation" do

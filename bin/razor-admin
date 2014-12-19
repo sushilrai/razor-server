@@ -3,8 +3,7 @@
 require 'optparse'
 require 'bundler/setup'
 
-MIGRATION_DIR=File::expand_path(File::join(File::dirname(__FILE__),
-                                           "../db/migrate"))
+MIGRATION_DIR=File::expand_path(File::join(File::dirname(__FILE__), "../db/migrate"))
 show_help=false
 optparse = OptionParser.new do |opts|
   opts.banner = <<EOS
@@ -36,7 +35,8 @@ COMMANDS = {
     end
     # @todo lutter 2014-01-21: figure out a more sustainable way to clean
     # out the database
-    Razor.database.run("DROP TYPE power_state")
+    Razor.database.run("DROP TYPE IF EXISTS power_state")
+    Razor.database.run("DROP TYPE IF EXISTS command_status")
     Sequel::Migrator.apply(Razor.database, MIGRATION_DIR)
     true
   end

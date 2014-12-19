@@ -1,3 +1,6 @@
+# -*- encoding: utf-8 -*-
+require_relative 'gettext_setup'
+
 require 'sequel'
 require 'torquebox/logger'
 require_relative 'config'
@@ -36,6 +39,11 @@ module Razor
       end
     end
 
+    def database_is_current?
+      @@database_migration_path ||= File.join(root, 'db', 'migrate')
+      Sequel::Migrator.is_current?(database, @@database_migration_path)
+    end
+
     def logger
       synchronize do
         @@logger ||= TorqueBox::Logger.new("razor")
@@ -50,7 +58,7 @@ module Razor
 
     def security_manager
       synchronize do
-        path = File.expand_path(Razor.config['auth.config'] || 'shiro.ini', root)
+        path = File.expand_path(Razor.config['auth.config'] || 'shiro.ini', config.root)
         unless defined?(@@security_manager_from) and @@security_manager_from == path
           @@security_manager_from = path
           @@security_manager = synchronize do
@@ -74,6 +82,10 @@ module Razor
   # Establish a database connection now and load extensions
   Razor.database
   Razor.database.extension :pg_array
+
+  # Ensure the migration extension is available, now that we use it as part of
+  # each request to ensure that we catch missed migrations correctly.
+  Sequel.extension :migration
 
   # Ensure that we raise on ORM failures by default; while this is the default
   # in sufficiently recent versions of Sequel, it is better explicit than

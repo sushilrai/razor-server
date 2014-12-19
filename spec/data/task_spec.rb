@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 
 describe Razor::Data::Task do
@@ -52,6 +53,27 @@ describe Razor::Data::Task do
       expect {
         task.save
       }.to raise_error(Sequel::ValidationFailed)
+    end
+
+    describe "task" do
+      it "should allow '/' in the middle of a name" do
+        task.set(name: 't/1').save
+      end
+      it "should reject '/' at the end of a name" do
+        rejects 'name', 't/'
+      end
+      it "should reject '/' at the start of a name" do
+        rejects 'name', '/1'
+      end
+      it "should reject '$' in the middle of a name" do
+        rejects 'name', 't$1'
+      end
+      it "should reject '$' at end of a name" do
+        rejects 'name', 't$'
+      end
+      it "should reject '$' at start of a name" do
+        rejects 'name', '$1'
+      end
     end
 
     describe "templates" do

@@ -1,22 +1,27 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 require_relative '../../app'
 
-describe "delete-node" do
-  include Rack::Test::Methods
+describe Razor::Command::DeleteNode do
+  include Razor::Test::Commands
 
   let(:app) { Razor::App }
+  let(:node) { Fabricate(:node) }
+  let(:command_hash) { { "name" => node.name }}
   before :each do
     authorize 'fred', 'dead'
   end
 
   def delete_node(name)
-    post '/api/commands/delete-node', { "name" => name }.to_json
+    command 'delete-node', { "name" => name }
   end
 
   context "/api/commands/delete-node" do
     before :each do
       header 'content-type', 'application/json'
     end
+
+    it_behaves_like "a command"
 
     it "should delete an existing node" do
       node = Fabricate(:node)

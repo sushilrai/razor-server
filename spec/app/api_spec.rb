@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 require_relative '../spec_helper'
 require_relative '../../app'
 
@@ -64,6 +65,24 @@ describe "command and query API" do
       end
     end
 
+    it "should properly set the hostname in links" do
+      # This tests https://tickets.puppetlabs.com/browse/RAZOR-93
+      # The first request to /api would 'bake' the hostname into
+      # command URL's
+      header 'Host', 'example.net'
+      get '/api'
+
+      header 'Host', 'example.com'
+      get '/api'
+
+      api = last_response.json
+      (api['commands'] + api['collections']).each do |x|
+        uri = URI::parse(x['id'])
+        uri.host.should be == 'example.com',
+          "id for #{x['name']} is '#{uri.host}' but should be 'example.com'"
+      end
+    end
+
     it "should return JSON content" do
       get '/api'
       last_response.content_type.should =~ /application\/json/i
@@ -72,7 +91,7 @@ describe "command and query API" do
     it "should match the shape of our command handler" do
       get '/api'
       data = last_response.json
-      data.keys.should =~ %w[commands collections]
+      data.keys.should =~ %w[commands collections version]
       data["commands"].all? {|x| x.keys.should =~ %w[id rel name]}
     end
 
@@ -117,7 +136,7 @@ describe "command and query API" do
     end
 
     it "should list all policies" do
-      pl =  Fabricate(:policy, :repo => @repo, :task_name => "some_os")
+      pl =  Fabricate(:policy, :repo => @repo)
       pl.add_tag @tag
 
       get '/api/collections/policies'
@@ -219,7 +238,7 @@ describe "command and query API" do
       last_response.status.should == 200
 
       data = last_response.json
-      data.keys.should =~ %w[spec id name iso_url]
+      data.keys.should =~ %w[spec id name iso_url task url]
     end
 
     it "should return 404 when repo not found" do
@@ -258,7 +277,7 @@ describe "command and query API" do
         },
         'name'     => {
           'type'     => 'string',
-          'pattern'  => '^[a-zA-Z0-9_]+$'
+          'pattern'  => '^[a-zA-Z0-9_/]+$'
         },
         'base'     => {
           '$schema'  => 'http://json-schema.org/draft-04/schema#',
@@ -276,7 +295,7 @@ describe "command and query API" do
             },
             'name'     => {
               'type'     => 'string',
-              'pattern'  => '^[a-zA-Z0-9_]+$'
+              'pattern'  => '^[a-zA-Z0-9_/]+$'
             }
           },
           'additionalProperties' => false
@@ -344,13 +363,13 @@ describe "command and query API" do
     end
 
     it "includes a reference to the base task" do
-      get "/api/collections/tasks/some_os_derived"
+      get "/api/collections/tasks/some_os/derived"
       last_response.status.should == 200
 
       data = last_response.json
-      data["name"].should == "some_os_derived"
+      data["name"].should == "some_os/derived"
       data["os"]["version"].should == "4"
-      data["base"]["name"].should == "some_os"
+      data["base"]["name"].should == "some_os/base"
       validate! TaskItemSchema, last_response.body
     end
   end
@@ -605,6 +624,12 @@ describe "command and query API" do
           '$schema'       => 'http://json-schema.org/draft-04/schema#',
           'type'          => 'object',
           'minProperties' => 0,
+          'properties'    => {
+            'installed' => {
+              '$schema'  => 'http://json-schema.org/draft-04/schema#',
+              'type'     => ['string', 'boolean'],
+            }
+          },
           'additionalProperties' => {
             '$schema'   => 'http://json-schema.org/draft-04/schema#',
             'type'      => 'string',
@@ -702,6 +727,164 @@ describe "command and query API" do
       end
 
       it_should_behave_like "a node collection", 10
+    end
+  end
+
+  context "/api/collections/nodes/:name" do
+    let :node do Fabricate(:node) end
+
+    it "should include installed if installed" do
+      node.set(installed: 'nothing').save
+      get "/api/collections/nodes/#{node.name}"
+      last_response.status.should == 200
+
+      last_response.json.should have_key 'state'
+      last_response.json['state'].should include 'installed' => 'nothing'
+    end
+
+    it "should default to installed false" do
+      get "/api/collections/nodes/#{node.name}"
+      last_response.status.should == 200
+
+      last_response.json.should have_key 'state'
+      last_response.json['state'].should include 'installed' => false
+    end
+
+    it "should include installed false if not installed" do
+      node.set(installed: nil).save
+      get "/api/collections/nodes/#{node.name}"
+      last_response.status.should == 200
+
+      last_response.json.should have_key 'state'
+      last_response.json['state'].should include 'installed' => false
+    end
+  end
+
+  context "/api/collections/commands" do
+    CommandItemSchema = {
+      '$schema'  => 'http://json-schema.org/draft-04/schema#',
+      'title'    => "Command item JSON Schema",
+      'type'     => 'object',
+      'required' => %w[spec id name command],
+      'properties' => {
+        'spec' => {
+          'type'     => 'string',
+          'pattern'  => '^https?://'
+        },
+        'id'       => {
+          'type'     => 'string',
+          'pattern'  => '^https?://'
+        },
+        'name'     => {
+          'type'     => 'string',
+          'pattern'  => '^[0-9]+$'
+        },
+        'command'    => {
+          'type'     => 'string',
+          'pattern'  => '^[a-z-]+$'
+        },
+        'params'     => {
+          'type'     => 'object',
+        },
+        'errors'     => {
+          'type'     => 'array',
+          'items'    =>  {
+            'type'     => 'object',
+            'required' => %w[exception message attempted_at],
+            'properties' => {
+              'exception' => {
+                 'type'   => 'string'
+              },
+              'message'   => {
+                'type'    => 'string'
+              },
+              'attempted_at' => {
+                'type' => 'string'
+              }
+            },
+            'additionalProperties' => false
+          }
+        },
+        'status' => {
+          'type'     => 'string',
+          'pattern'  => '^(pending|running|finished|failed)$'
+        },
+        'submitted_at' => {
+          'type'       => 'string',
+        },
+        'finished_at'  => {
+          'type'       => 'string'
+        }
+      },
+      'additionalProperties' => false,
+    }.freeze
+
+    def validate!(schema, json)
+      # Why does the validate method insist it should be able to modify
+      # my schema?  That would be, y'know, bad.
+      JSON::Validator.validate!(schema.dup, json, :validate_schema => true)
+    end
+
+    shared_examples "a command collection" do |expected|
+      it "should return a valid collection" do
+        get "/api/collections/commands"
+
+        last_response.status.should == 200
+        nodes = last_response.json['items']
+        nodes.should be_an_instance_of Array
+        nodes.count.should == expected
+        validate! ObjectRefCollectionSchema, last_response.body
+      end
+
+      it "should 404 a command requested that does not exist" do
+        get "/api/collections/commands/fast%20freddy"
+        last_response.status.should == 404
+      end
+
+      if expected > 0
+        it "should be able to access all command instances" do
+          Razor::Data::Command.all.each do |command|
+            get "/api/collections/commands/#{command.name}"
+            last_response.status.should == 200
+            validate! CommandItemSchema, last_response.body
+          end
+        end
+      end
+    end
+
+    context "with none" do
+      it_should_behave_like "a command collection", 0
+    end
+
+    context "with one" do
+      before :each do
+        Fabricate(:command)
+      end
+
+      it_should_behave_like "a command collection", 1
+    end
+
+    context "with ten" do
+      before :each do
+        10.times { Fabricate(:command) }
+      end
+
+      it_should_behave_like "a command collection", 10
+    end
+
+    it "should report errors in an array" do
+      command = Fabricate(:command)
+      command.add_exception Exception.new("Exception 1")
+      command.add_exception Exception.new("Exception 2")
+      command.store('failed')
+      get "/api/collections/commands/#{command.id}"
+      last_response.status.should == 200
+      validate! CommandItemSchema, last_response.body
+
+      last_response.json['status'].should == 'failed'
+      last_response.json['errors'].should_not be_nil
+      last_response.json['errors'][0]['message'].should == "Exception 1"
+      last_response.json['errors'][1]['message'].should == "Exception 2"
     end
   end
 
