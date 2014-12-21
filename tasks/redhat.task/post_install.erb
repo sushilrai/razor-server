@@ -30,7 +30,7 @@ rm -rf /tmp/mnt
 
 # NTP Setting
 ntp_server=<%=
-    options = node.policy.node_metadata['installer_options']
+    options = node.policy.node_metadata['installer_options'] || {}
     (options['ntp_server'] || '').strip.size > 0 ? options['ntp_server'] : ""
 %>
 
