@@ -7,7 +7,7 @@ DEFAULT_OS = 'Windows Server 2008 R2 SERVERSTANDARD'
 base_dir = File.join(ASM::Util::INSTALLER_OPTS_DIR, "#{task.base.name}.task")
 
 settings = ASM::Util.load_file('windows_settings.yaml', base_dir)
-options = node.policy.node_metadata['installer_options']
+options = node.policy.node_metadata['installer_options'] || {}
 
 version = node.task.os_version.gsub('_', ' ')
 version = DEFAULT_OS if version == '2008'
