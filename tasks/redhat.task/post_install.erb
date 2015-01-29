@@ -36,21 +36,25 @@ ntp_server=<%=
 
 ### NTP CONFIGURATIONS ###
 if [ "$ntp_server" != "" ]; then
-  cat > /etc/ntp.conf << __NTP_CONFIG__
-  restrict default kod nomodify notrap noquerynopeer
-  restrict 127.0.0.1
-  server $ntp_server
-__NTP_CONFIG__
+  mv /etc/ntp.conf /etc/ntp.conf.orig
+  # Comment out original server lines
+  sed -e 's/^\(\s*server.*\)/#\1/' /etc/ntp.conf.orig > /etc/ntp.conf
+
+  # Append desired server entry
+  cat >> /etc/ntp.conf << EOL
+
+# SERVER(S) ADDED BY ASM KICKSTART
+server $ntp_server iburst
+EOL
+
 <% if task.os_version == '7' %>
-    systemctl enable ntpd.service
-    systemctl start ntpd.service
+  systemctl enable ntpd.service
+  systemctl start ntpd.service
 <% else %>
-    /sbin/chkconfig --level 345 ntpd on
-    service ntpd start
+  /sbin/chkconfig --level 345 ntpd on
+  service ntpd start
 <% end %>
-
 fi
-
 
 #update puppet.conf file
 cat > /etc/puppet/puppet.conf << EOF
