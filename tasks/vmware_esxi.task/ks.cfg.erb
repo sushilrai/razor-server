@@ -122,8 +122,8 @@ restrict default kod nomodify notrap noquerynopeer
 restrict 127.0.0.1
 server $ntp_server
 __NTP_CONFIG__
-service ntpd start
-/sbin/chkconfig --level 345 ntpd on
+/etc/init.d/ntpd restart
+/sbin/chkconfig ntpd on
 fi
 
 # enter maintenance mode
