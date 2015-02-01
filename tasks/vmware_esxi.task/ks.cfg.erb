@@ -118,9 +118,10 @@ ntp_server=<%=
 ### NTP CONFIGURATIONS ###
 if [ "$ntp_server" != "" ]; then
 cat > /etc/ntp.conf << __NTP_CONFIG__
-restrict default kod nomodify notrap noquerynopeer
+restrict default kod nomodify notrap nopeer
 restrict 127.0.0.1
 server $ntp_server
+driftfile /etc/ntp.drift
 __NTP_CONFIG__
 /etc/init.d/ntpd restart
 /sbin/chkconfig ntpd on
