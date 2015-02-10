@@ -121,6 +121,16 @@
           <Order>2</Order>
           <Path>msiexec /i \\<%= URI.parse(repo_url).host %>\razor\puppet-agent\windows\puppet-3.3.2.msi /qn PUPPET_MASTER_SERVER=&quot;dellasm&quot; PUPPET_AGENT_CERTNAME=&quot;<%=  require 'asm/util'; ASM::Util.hostname_to_certname(node.hostname.split('.').first) %>&quot; PUPPET_AGENT_ACCOUNT_USER=Administrator PUPPET_AGENT_ACCOUNT_PASSWORD=&quot;<%= ASM::Cipher.decrypt_string(node.root_password) %>&quot;</Path>
         </RunSynchronousCommand>
+        <%=
+          if os.ntp_server
+             command = "powershell w32tm /config /manualpeerlist:\"#{os.ntp_server}\" /syncfromflags:MANUAL; net stop w32time ; net start w32time"
+             str = "<RunSynchronousCommand wcm:action=\"add\">
+          <Description>Install Puppet Agent from razor server</Description>
+          <Order>2</Order>
+          <Path>#{command}</Path>
+        </RunSynchronousCommand>"
+          end
+        %>
       </RunSynchronous>
     </component>
 
