@@ -123,11 +123,23 @@
         </RunSynchronousCommand>
         <%=
           if os.ntp_server
-             command = "powershell w32tm /config /manualpeerlist:\"#{os.ntp_server}\" /syncfromflags:MANUAL; net stop w32time ; net start w32time"
+             command1 = "cmd /c w32tm /config /manualpeerlist:\"#{os.ntp_server}\" /syncfromflags:MANUAL"
+             command2 = "cmd /c &quot;sc config w32time start= delayed-auto&quot;"
+             command3 = "powershell.exe -Command restart-Service w32time"
              str = "<RunSynchronousCommand wcm:action=\"add\">
-          <Description>Install Puppet Agent from razor server</Description>
-          <Order>2</Order>
-          <Path>#{command}</Path>
+          <Description>NTP Server configuration</Description>
+          <Order>3</Order>
+          <Path>#{command1}</Path>
+        </RunSynchronousCommand>
+<RunSynchronousCommand wcm:action=\"add\">
+          <Description>Configure service w32time as Delayed Automatic</Description>
+          <Order>4</Order>
+          <Path>#{command2}</Path>
+        </RunSynchronousCommand>
+<RunSynchronousCommand wcm:action=\"add\">
+          <Description>Start time configuration</Description>
+          <Order>5</Order>
+          <Path>#{command3}</Path>
         </RunSynchronousCommand>"
           end
         %>
