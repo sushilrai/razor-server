@@ -75,6 +75,28 @@
           <Order>2</Order>
           <Path>msiexec /i \\<%= URI.parse(repo_url).host %>\razor\puppet-agent\windows\puppet-3.3.2.msi /qn PUPPET_MASTER_SERVER="dellasm" PUPPET_AGENT_CERTNAME="<%=  require 'asm/util'; ASM::Util.hostname_to_certname(node.hostname.split('.').first) %>" PUPPET_AGENT_ACCOUNT_USER=Administrator PUPPET_AGENT_ACCOUNT_PASSWORD="<%= ASM::Cipher.decrypt_string(node.root_password) %>"</Path>
         </RunSynchronousCommand>
+        <%=
+          if os.ntp_server
+             command1 = "cmd /c w32tm /config /manualpeerlist:\"#{os.ntp_server}\" /syncfromflags:MANUAL"
+             command2 = "cmd /c &quot;sc config w32time start= delayed-auto&quot;"
+             command3 = "powershell.exe -Command restart-Service w32time"
+             str = "<RunSynchronousCommand wcm:action=\"add\">
+          <Description>NTP Server configuration</Description>
+          <Order>3</Order>
+          <Path>#{command1}</Path>
+        </RunSynchronousCommand>
+<RunSynchronousCommand wcm:action=\"add\">
+          <Description>Configure service w32time as Delayed Automatic</Description>
+          <Order>4</Order>
+          <Path>#{command2}</Path>
+        </RunSynchronousCommand>
+<RunSynchronousCommand wcm:action=\"add\">
+          <Description>Start time configuration</Description>
+          <Order>5</Order>
+          <Path>#{command3}</Path>
+        </RunSynchronousCommand>"
+          end
+        %>
       </RunSynchronous>
     </component>
 

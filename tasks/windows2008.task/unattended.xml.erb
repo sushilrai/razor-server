@@ -14,7 +14,8 @@ version = DEFAULT_OS if version == '2008'
 os = OpenStruct.new
 os.version = version
 os.license = options['product_key'] || settings[version]['license']
-
+os.ntp_server = options['ntp_server']
+    
 if options['os_type'] == 'hyperv'
   content = ASM::Util.load_file('hyper-v-unattended.xml.erb', base_dir)
 else
