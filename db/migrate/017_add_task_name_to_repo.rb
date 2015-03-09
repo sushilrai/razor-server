@@ -36,6 +36,10 @@ Sequel.migration do
           repo_name = from(:repos).select(:name).where(:id => repo[:id]).single_value
           puts _("Warning: Multiple policies found for repo #{repo_name}; unable to control task from repo")
         end
+
+    #ASM specific.  Ensure our default esxi repos map to the vmware_esxi task.
+    from(:repos).where(Sequel.like(:name, 'esxi%')).update(:task_name => 'vmware_esxi')
+
   end
 
   down do
