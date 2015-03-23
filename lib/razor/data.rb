@@ -56,7 +56,14 @@ module Razor::Data
           Razor.logger.info(_(<<-MSG) % {self: self, data: data})
 %{self}.create(%{data}) failed unique constraint, but missing duplicate, retrying
           MSG
-          retry
+
+          retrycount = retrycount.to_i.succ
+
+          if retrycount < 10
+            retry
+          else
+            raise('Retry loop detected while trying to handle missing duplicate case')
+          end
         end
 
         # Is this an exact match for the existing repo, or is it different?
