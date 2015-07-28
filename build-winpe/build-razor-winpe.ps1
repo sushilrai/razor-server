@@ -1,6 +1,6 @@
 # -*- powershell -*-
 # To run this script:
-# powershell -executionpolicy bypass -file build-razor-winpe.ps1 [ASM appliance IP] [Your Windows .iso name] [New Windows .iso name]
+# powershell -executionpolicy bypass -file build-razor-winpe.ps1 [ASM appliance IP -or- DHCP] [Your Windows .iso name] [New Windows .iso name]
 #
 param(
     [Cmdletbinding(PositionalBinding = $false)]
@@ -23,15 +23,16 @@ function check-validip ([string]$isvalidip) {
    $hasfouroctet = (($isvalidip.Split((".")) | Measure-Object).Count -eq 4)
    if(!$hasfouroctet) {
        Write-Host 'WARNING: Invalid ASM Appliance IP if ASM appliance is not your DHCP server'
-       exit 1
+       return $false
    } else {
       foreach($string in $isvalidip.Split(".")) {
           if(($string.Length -gt 3) -or ($string.Length -lt 1)) {
                  Write-Host 'WARNING: Invalid ASM Appliance IP if ASM appliance is not your DHCP server'
-                 exit 1
+                 return $false
           }
       }
    }
+   return $true
 }
 
 function check-validisoname ([string] $isvalidiso) {
@@ -55,7 +56,6 @@ re-run this script yourself.
 "@
     exit 1
 }
-check-validip $asmapplianceip
 
 if(!$finalisoname) {
     $finalisoname = 'asmwindows.iso'
@@ -129,7 +129,11 @@ $string13 ='                          $_.dhcpenabled -eq "true" -and'
 $string14 ='                          $_.dhcpleaseobtained } |'
 $string15 ='                  select -uniq -first 1 -expandproperty dhcpserver'
 $string16 ='}'
-$string17 ='$baseurl = "http://' + $asmapplianceip + ':8080/svc"'
+if (check-validip $asmapplianceip) {
+    $string17 ='$baseurl = "http://' + $asmapplianceip + ':8080/svc"'
+} else {
+    $string17 ='$baseurl = "http://${server}:8080/svc"'
+}
 $string18 ='# Figure out our node hardware ID details'
 $string19 ='$hwid = get-wmiobject Win32_NetworkAdapter -filter "netenabled=''true''" | '
 $string20 ='            select -expandproperty macaddress | '
