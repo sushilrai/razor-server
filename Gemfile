@@ -27,6 +27,7 @@ gem 'hashie', '~> 2.0.5'
 gem 'aescrypt'
 gem 'rest-client'
 gem 'fast_gettext', '~> 0.8.1'
+gem 'dell-asm-util', :git => 'https://github.com/dell-asm/dell-asm-util.git'
 
 ## support for various tasks and utility
 # This allows us to encrypt plain-text-in-the-DB passwords when they travel,
