@@ -13,8 +13,21 @@ rootpw --iscrypted <%=
     UnixCrypt::MD5.build(asm_decrypted_password)
   end
 %>
-clearpart --firstdisk --overwritevmfs
-install --firstdisk --overwritevmfs
+<%=
+disk_arg = ""
+options = node.policy.node_metadata['installer_options']
+if options && !options.empty?
+  boot_device = options['target_boot_device'] || ''
+  if boot_device.include?("SD")
+    disk_arg += "=usb-storage"
+  else
+    disk_arg += "=local"
+  end
+end
+"clearpart --firstdisk#{disk_arg} --overwritevmfs
+install --firstdisk#{disk_arg}  --overwritevmfs"
+%>
+
 # Set the network to DHCP on the first network adapater
 # @todo danielp 2013-10-11: this needs to support static mode too...
 <%=
