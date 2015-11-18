@@ -20,8 +20,6 @@ if options && !options.empty?
   boot_device = options['target_boot_device'] || ''
   if boot_device.include?("SD")
     disk_arg += "=usb-storage"
-  else
-    disk_arg += "=local"
   end
 end
 "clearpart --firstdisk#{disk_arg} --overwritevmfs
