@@ -71,7 +71,7 @@ cat > /etc/puppet/puppet.conf << EOF
 EOF
 
 # Nagios NRPE configuration, used only for C* series machines
-if [[ "$(/usr/bin/facter productname)" =~ ^PowerEdge\ C[0-9]+ ]]; then
+if [[ "$(/usr/bin/facter productname)" =~ ^PowerEdge\ C62[0-9]+ ]]; then
   /bin/sed -i 's:allowed_hosts=127.0.0.1:allowed_hosts=dellasm,127.0.0.1:' /etc/nagios/nrpe.cfg
   /bin/sed -i '/^command\[/ s:^:#:' /etc/nagios/nrpe.cfg
 
