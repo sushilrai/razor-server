@@ -21,10 +21,18 @@ fi
 #add the puppet master host entry in /etc/hosts
 echo "<%= URI.parse(repo_url).host %> dellasm" >> /etc/hosts
 
-#install the puppet agent
+# Install the puppet agent
+# TODO: Need to transition to installing these rpms via yum. That will fix problems
+# with installing minimal ISOs that don't include samba and problems like the
+# libselinux-ruby problem below where the rpm is already included in RHEL 7.2
 mkdir /tmp/mnt
 mount -o nolock,username=readonly,password=readonly //<%= URI.parse(repo_url).host %>/razor /tmp/mnt
-rpm -ivh /tmp/mnt/puppet-agent/rhel<%= task.os_version %>/x86_64/*.rpm
+if rpm -q libselinux-ruby; then
+  # HACK: RHEL 7.2 already has libselinux-ruby installed. Skip in that case.
+  rpm -ivh `ls /tmp/mnt/puppet-agent/rhel<%= task.os_version %>/x86_64/*.rpm | grep -v libselinux-ruby`
+else
+  rpm -ivh /tmp/mnt/puppet-agent/rhel<%= task.os_version %>/x86_64/*.rpm
+fi
 umount /tmp/mnt
 rm -rf /tmp/mnt
 
