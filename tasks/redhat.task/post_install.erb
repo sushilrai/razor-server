@@ -129,6 +129,26 @@ echo ========================================================================
 <% if task.os_version == '7' %>
 systemctl enable puppet.service
 systemctl start puppet.service
+
+# RHEL7 distro has a puppet bug that does not remove the lock file successfully even when there's no puppet process running.
+# The following crontab task should remove it during the reboot only if there is no running puppet process.
+cat > /etc/systemd/system/puppetclean.service << EOF
+[Unit]
+Description=Clean up the puppet agent lock file without puppet process running
+Wants=basic.target
+After=basic.target
+Before=pupetagent.service
+
+[Service]
+ExecStart=/bin/find /var/lib/puppet/state/agent_catalog_run.lock -size 0 -delete
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+chmod 644 /etc/systemd/system/puppetclean.service
+systemctl enable puppetclean
+systemctl start puppetclean
 <% else %>
 chkconfig puppet on
 service puppet start
