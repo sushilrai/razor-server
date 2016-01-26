@@ -25,10 +25,35 @@
         when /^kernelopt=/
           #"kernelopt=ks=#{file_url('ks.cfg')}"
           if File.exists?("/opt/razor-server/tasks/vmware_esxi.task/ks_" + node.facts["serialnumber"] + ".cfg.erb")
-             "kernelopt=ks=#{file_url('ks_' + node.facts["serialnumber"] + '.cfg')}"
+            ks_file = file_url("ks_" + node.facts["serialnumber"] + ".cfg")
           else
-             "kernelopt=ks=#{file_url('ks.cfg')}"
+            ks_file = file_url("ks.cfg")
           end
+
+          ret = "kernelopt=ks=%s" % ks_file
+
+          options = node.policy.node_metadata["installer_options"]
+          if options && options["network_configuration"]
+            require "json"
+            require "asm/network_configuration"
+
+            network_config = ASM::NetworkConfiguration.new(JSON.parse(options["network_configuration"]))
+            partition = network_config.get_partitions("PXE").first
+            if partition
+              network = partition.networkObjects.find { |p| p["type"] == "PXE" }
+              static = network.static && network.staticNetworkConfiguration
+              if static
+                # Add static IP address info
+                #
+                # Example from http://www.virtuallyghetto.com/2011/05/semi-interactive-automated-esxi.html
+                # "kernelopt=ks=ks.cfg ip=172.25.3.105 netmask=255.255.0.0 gateway=172.25.0.1 nameserver=172.20.0.8"
+                #
+                # TODO: needs to be targeted to a specific NIC e.g. via mac address
+                ret += " ip=%s netmask=%s gateway=%s" % [static.ipAddress, static.subnet, static.gateway]
+              end
+            end
+          end
+          ret
         else
           line
       end
