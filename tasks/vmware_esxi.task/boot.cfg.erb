@@ -23,14 +23,13 @@
         when /^modules=/
           line.gsub('/', repo_url('/'))
         when /^kernelopt=/
-          #"kernelopt=ks=#{file_url('ks.cfg')}"
-          if File.exists?("/opt/razor-server/tasks/vmware_esxi.task/ks_" + node.facts["serialnumber"] + ".cfg.erb")
-            ks_file = file_url("ks_" + node.facts["serialnumber"] + ".cfg")
-          else
-            ks_file = file_url("ks.cfg")
-          end
+          kernel_opts = {}
 
-          ret = "kernelopt=ks=%s" % ks_file
+          if File.exists?("/opt/razor-server/tasks/vmware_esxi.task/ks_" + node.facts["serialnumber"] + ".cfg.erb")
+            kernel_opts[:ks] = file_url("ks_" + node.facts["serialnumber"] + ".cfg")
+          else
+            kernel_opts[:ks] = file_url("ks.cfg")
+          end
 
           options = node.policy.node_metadata["installer_options"]
           if options && options["network_configuration"]
@@ -40,20 +39,20 @@
             network_config = ASM::NetworkConfiguration.new(JSON.parse(options["network_configuration"]))
             partition = network_config.get_partitions("PXE").first
             if partition
+              kernel_opts[:ksdevice] = partition.mac_address if partition.mac_address
+
               network = partition.networkObjects.find { |p| p["type"] == "PXE" }
               static = network.static && network.staticNetworkConfiguration
               if static
-                # Add static IP address info
-                #
-                # Example from http://www.virtuallyghetto.com/2011/05/semi-interactive-automated-esxi.html
-                # "kernelopt=ks=ks.cfg ip=172.25.3.105 netmask=255.255.0.0 gateway=172.25.0.1 nameserver=172.20.0.8"
-                #
-                # TODO: needs to be targeted to a specific NIC e.g. via mac address
-                ret += " ip=%s netmask=%s gateway=%s" % [static.ipAddress, static.subnet, static.gateway]
+                kernel_opts.merge!(:ip => static.ipAddress, :subnet => static.subnet, :gateway => static.gateway)
+                dns_server = [static.primaryDns, static.secondaryDns].compact.first
+                kernel_opts[:nameserver] = dns_server if dns_server
               end
             end
           end
-          ret
+
+          # Docs on kernel boot options: http://pubs.vmware.com/vsphere-50/index.jsp?topic=%2Fcom.vmware.vsphere.install.doc_50%2FGUID-9040F0B2-31B5-406C-9000-B02E8DA785D4.html
+          "kernelopt=%s" % kernel_opts.map { |k, v| "%s=%s" % [k, v] }.join(" ")
         else
           line
       end
