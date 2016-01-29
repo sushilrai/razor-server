@@ -13,7 +13,35 @@ rootpw --iscrypted <%=
     asm_decrypted_password = ASM::Cipher.decrypt_string(node.root_password)
     UnixCrypt::SHA512.build(asm_decrypted_password)
 %>
-network --hostname <%= node.hostname %>
+<%
+
+   options = node.policy.node_metadata["installer_options"]
+   k_opts = ""
+   if options && options["network_configuration"]
+     require "json"
+     require "asm/network_configuration"
+
+     kernel_opts = {}
+
+     network_config = ASM::NetworkConfiguration.new(JSON.parse(options["network_configuration"]))
+     partition = network_config.get_partitions("PXE").first
+     if partition
+       kernel_opts["--device"] = partition.mac_address if partition.mac_address
+
+       network = partition.networkObjects.find { |p| p["type"] == "PXE" }
+       static = network.static && network.staticNetworkConfiguration
+       if static
+         kernel_opts["--bootproto"] = "static"
+         kernel_opts.merge!("--ip" => static.ipAddress, "--netmask" => static.subnet, "--gateway" => static.gateway)
+         dns_server = [static.primaryDns, static.secondaryDns].compact.first
+         kernel_opts["--nameserver"] = dns_server if dns_server
+       end
+     end
+     k_opts = kernel_opts.map { |k, v| "%s=%s" % [k, v] }.join(" ")
+   end
+
+%>
+network --hostname <%= node.hostname %> <%= k_opts unless k_opts.empty? %>
 firewall --enabled --ssh
 authconfig --enableshadow --passalgo=sha512 --enablefingerprint
 <%=

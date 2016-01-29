@@ -1,1 +1,29 @@
-ks=<%= file_url("kickstart") %> network ksdevice=bootif BOOTIF=01-${netX/mac}
+<%
+
+   options = node.policy.node_metadata["installer_options"]
+   k_opts = ""
+   if options && options["network_configuration"]
+     require "json"
+     require "asm/network_configuration"
+
+     kernel_opts = {}
+
+     network_config = ASM::NetworkConfiguration.new(JSON.parse(options["network_configuration"]))
+     partition = network_config.get_partitions("PXE").first
+     if partition
+       kernel_opts[:ksdevice] = partition.mac_address if partition.mac_address
+
+       network = partition.networkObjects.find { |p| p["type"] == "PXE" }
+       static = network.static && network.staticNetworkConfiguration
+       if static
+         kernel_opts.merge!(:ip => static.ipAddress, :netmask => static.subnet, :gateway => static.gateway)
+         dns_server = [static.primaryDns, static.secondaryDns].compact.first
+         kernel_opts[:nameserver] = dns_server if dns_server
+       end
+     end
+     k_opts = kernel_opts.map { |k, v| "%s=%s" % [k, v] }.join(" ")
+   end
+
+%>
+
+ks=<%= file_url("kickstart") %> <%= k_opts.empty? ? "network ksdevice=bootif BOOTIF=01-${netX/mac}" : k_opts %>
