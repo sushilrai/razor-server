@@ -44,7 +44,7 @@
               network = partition.networkObjects.find { |p| p["type"] == "PXE" }
               static = network.static && network.staticNetworkConfiguration
               if static
-                kernel_opts.merge!(:ip => static.ipAddress, :subnet => static.subnet, :gateway => static.gateway)
+                kernel_opts.merge!(:ip => static.ipAddress, :netmask => static.subnet, :gateway => static.gateway)
                 dns_server = [static.primaryDns, static.secondaryDns].compact.first
                 kernel_opts[:nameserver] = dns_server if dns_server
               end
