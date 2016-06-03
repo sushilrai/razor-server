@@ -1,0 +1,10 @@
+---
+
+
+os_version: 12
+label: SuSE Enterprise Linux Server 12
+description: SuSE Generic installer
+boot_sequence:
+  1: boot_install
+  default: boot_local
+

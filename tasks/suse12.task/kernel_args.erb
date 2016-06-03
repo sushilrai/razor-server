@@ -1,0 +1,32 @@
+<%
+   options = node.policy.node_metadata["installer_options"]
+   interface = ""
+   netmask = ""
+   gateway = ""
+   if options && options["network_configuration"]
+     require "json"
+     require "asm/network_configuration"
+
+     kernel_opts = {}
+
+     network_config = ASM::NetworkConfiguration.new(JSON.parse(options["network_configuration"]))
+     partition = network_config.get_partitions("PXE").first
+     if partition
+#  What may be broken.  Linuxrc does not seem to accept a netdevice parameter of MAC address, it only seems to accept
+#  interface names such as em1.  From the documentation it seems that if no netdevice is provided it will go through
+#  all available interfaces and apply and keep the settings to one tha works.  This seems to work on my system when
+#  I switch between port 1 and 2, but I also have no other networks available.  So that is why currently we don't use
+#  the MAC address to pick the PXE install device, but we should do some more testing to ensure this always works.
+#  Here is where the doc says they'll search for an interface that works: https://en.opensuse.org/SDB:Linuxrc#Classical
+       network = partition.networkObjects.find { |p| p["type"] == "PXE" }
+       static = network.static && network.staticNetworkConfiguration
+       if static
+         gateway = " gateway=" + static.gateway
+         interface = " hostip=" + static.ipAddress
+         netmask = " netmask=" + static.subnet
+       end
+     end
+   end
+
+%>
+install=<%=repo_url()%><%= interface %><%= gateway %><%= netmask %> autoyast=<%= file_url("autoyast") %>
