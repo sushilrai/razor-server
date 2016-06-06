@@ -18,7 +18,7 @@ source 'https://rubygems.org'
 #ruby-gemset=razor-server
 ruby '1.9.3', :engine => 'jruby', :engine_version => '1.7.19'
 
-gem 'torquebox', '~> 3.0.1'
+gem 'torquebox', '~> 3.1.2'
 gem 'sinatra'
 gem 'sequel'
 gem 'jdbc-postgres'
@@ -62,7 +62,7 @@ group :development do
   #
   # For production you can use this, or deploy to a distinct installation of
   # TorqueBox, as you prefer.
-  gem 'torquebox-server', '~> 3.0.1'
+  gem 'torquebox-server', '~> 3.1.2'
 
   # This provides the rxgettext tool, used to manage our pot translation
   # template file generation.  Unfortunately, while fast_gettext is better for
