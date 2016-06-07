@@ -1,0 +1,55 @@
+#!/bin/bash
+exec >> /var/log/razor.log 2>&1
+
+echo "Starting post_install"
+#Puppet agent installs old version with Sles 11 SP3
+rpm -e puppet-2.6.18-0.4.2
+
+rm -rf /var/lib/puppet/ssl
+
+<%= render_template("set_hostname") %>
+
+<%= render_template("store_ip") %>
+
+#add the puppet master host entry in /etc/hosts
+echo "172.29.15.100 dellasm" >> /etc/hosts
+
+#ensure ntp is running
+/etc/init.d/ntp start
+
+#Install the puppet agent
+mkdir /tmp/mnt
+mount -o nolock,username=readonly,password=readonly //<%= URI.parse(repo_url).host %>/razor /tmp/mnt
+zypper --non-interactive --no-gpg-checks install /tmp/mnt/puppet-agent/suse11/*.rpm
+umount /tmp/mnt
+rm -rf /tmp/mnt
+
+#update puppet.conf file
+cat > /etc/puppet/puppet.conf << EOF
+[main]
+    server = dellasm
+    logdir = /var/log/puppet
+    rundir = /var/run/puppet
+    ssldir = \$vardir/ssl
+[agent]
+    classfile   = \$vardir/classes.txt
+    localconfig = \$vardir/localconfig
+    certname    = <%= node.policy.node_metadata['installer_options']['agent_certname'] %>
+EOF
+
+# For debugging, just in case, dump out the modified confirmation file.
+echo ====================[ /etc/puppet/puppet.conf ]=========================
+cat /etc/puppet/puppet.conf
+echo ========================================================================
+
+cat <<EOF > /etc/motd
+Installed by Razor using <%= task.label %> - <%= task.description %>
+Repo: <%= repo_url %>
+Node: <%= node_url %>
+Install log: /var/log/razor.log
+EOF
+
+curl -s <%= broker_install_url %> | /bin/bash
+
+curl -s <%= stage_done_url("finished") %>
+

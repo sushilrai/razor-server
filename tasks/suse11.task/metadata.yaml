@@ -1,0 +1,10 @@
+---
+
+
+os_version: 11
+label: SuSE Enterprise Linux Server 11
+description: SuSE Generic installer
+boot_sequence:
+  1: boot_install
+  default: boot_local
+
