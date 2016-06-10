@@ -19,7 +19,9 @@ fi
 # which there is no RHN registration
 
 #add the puppet master host entry in /etc/hosts
-echo "<%= URI.parse(repo_url).host %> dellasm" >> /etc/hosts
+if ! grep -q dellasm /etc/hosts; then
+  echo "<%= URI.parse(repo_url).host %> dellasm" >> /etc/hosts
+fi
 
 # Install the puppet agent
 # TODO: Need to transition to installing these rpms via yum. That will fix problems
