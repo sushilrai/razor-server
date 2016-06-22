@@ -123,7 +123,8 @@
         </RunSynchronousCommand>
         <%=
           if os.ntp_server
-             command1 = "cmd /c w32tm /config /manualpeerlist:\"#{os.ntp_server}\" /syncfromflags:MANUAL"
+             ntp_servers = os.ntp_server.delete(" ").split(",").join(" ")
+             command1 = "cmd /c w32tm /config /manualpeerlist:\"#{ntp_servers}\" /syncfromflags:MANUAL"
              command2 = "cmd /c &quot;sc config w32time start= delayed-auto&quot;"
              command3 = "powershell.exe -Command restart-Service w32time"
              str = "<RunSynchronousCommand wcm:action=\"add\">
@@ -131,12 +132,12 @@
           <Order>3</Order>
           <Path>#{command1}</Path>
         </RunSynchronousCommand>
-<RunSynchronousCommand wcm:action=\"add\">
+        <RunSynchronousCommand wcm:action=\"add\">
           <Description>Configure service w32time as Delayed Automatic</Description>
           <Order>4</Order>
           <Path>#{command2}</Path>
         </RunSynchronousCommand>
-<RunSynchronousCommand wcm:action=\"add\">
+        <RunSynchronousCommand wcm:action=\"add\">
           <Description>Start time configuration</Description>
           <Order>5</Order>
           <Path>#{command3}</Path>

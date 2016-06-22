@@ -39,10 +39,10 @@ umount /tmp/mnt
 rm -rf /tmp/mnt
 
 # NTP Setting
-ntp_server=<%=
+ntp_server="<%=
     options = node.policy.node_metadata['installer_options'] || {}
     (options['ntp_server'] || '').strip.size > 0 ? options['ntp_server'] : ""
-%>
+%>"
 
 ### NTP CONFIGURATIONS ###
 if [ "$ntp_server" != "" ]; then
@@ -51,11 +51,11 @@ if [ "$ntp_server" != "" ]; then
   sed -e 's/^\(\s*server.*\)/#\1/' /etc/ntp.conf.orig > /etc/ntp.conf
 
   # Append desired server entry
-  cat >> /etc/ntp.conf << EOL
+  echo "# SERVER(S) ADDED BY ASM KICKSTART" >> /etc/ntp.conf
 
-# SERVER(S) ADDED BY ASM KICKSTART
-server $ntp_server iburst
-EOL
+<% (options['ntp_server'] || '').strip.split(',').each do |ntp| %>
+  echo "server <%= ntp.strip %> iburst" >> /etc/ntp.conf
+<% end %>
 
 <% if task.os_version == '7' %>
   systemctl enable ntpd.service
