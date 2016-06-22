@@ -2,7 +2,7 @@
 exec >> /var/log/razor.log 2>&1
 
 echo "Starting post_install"
-#Puppet agent installs old version with Sles 11 SP3
+#Puppet agent may install old version with Sles 11 SP3
 rpm -e puppet-2.6.18-0.4.2
 
 rm -rf /var/lib/puppet/ssl
@@ -12,7 +12,7 @@ rm -rf /var/lib/puppet/ssl
 <%= render_template("store_ip") %>
 
 #add the puppet master host entry in /etc/hosts
-echo "172.29.15.100 dellasm" >> /etc/hosts
+echo "<%= URI.parse(repo_url).host %> dellasm" >> /etc/hosts
 
 #ensure ntp is running
 /etc/init.d/ntp start
@@ -37,12 +37,18 @@ cat > /etc/puppet/puppet.conf << EOF
     certname    = <%= node.policy.node_metadata['installer_options']['agent_certname'] %>
 EOF
 
-# For debugging, just in case, dump out the modified confirmation file.
+# For debugging, just in case, dump out the modified configuration file.
 echo ====================[ /etc/puppet/puppet.conf ]=========================
 cat /etc/puppet/puppet.conf
 echo ========================================================================
 
+#update /etc/sysconfig/puppet
+cat > /etc/sysconfig/puppet << EOF
+PUPPET_EXTRA_OPTS=""
+EOF
+
 cat <<EOF > /etc/motd
+
 Installed by Razor using <%= task.label %> - <%= task.description %>
 Repo: <%= repo_url %>
 Node: <%= node_url %>
