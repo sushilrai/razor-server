@@ -156,70 +156,18 @@
     <languages></languages>
   </language>
   <login_settings/>
-<%
-
-   options = node.policy.node_metadata["installer_options"]
-   interface = ""
-   macaddr = options.to_s
-   gateway = ""
-   dnsserver = ""
-   if options && options["network_configuration"]
-     require "json"
-     require "asm/network_configuration"
-
-     kernel_opts = {}
-
-     network_config = ASM::NetworkConfiguration.new(JSON.parse(options["network_configuration"]))
-     partitions = network_config.get_partitions("PXE","PUBLIC_LAN","PRIVATE_LAN")
-     count = 1
-     partitions.each do |partition|
-       interface = interface + <<-S1
-      <interface>
-        <bootproto>dhcp</bootproto>
-        <device>em#{count}</device>
-        <startmode>auto</startmode>
-        <usercontrol>no</usercontrol>
-      </interface>
-S1
-       count += 1
-     end
-   end
-
-%>
   <networking>
     <dhcp_options>
       <dhclient_client_id></dhclient_client_id>
       <dhclient_hostname_option>AUTO</dhclient_hostname_option>
     </dhcp_options>
+    <keep_install_network config:type="boolean">true</keep_install_network>
     <dns>
       <dhcp_hostname config:type="boolean">false</dhcp_hostname>
-      <hostname><%= node.hostname unless node.hostname.empty? %></hostname>
-      <%= dnsserver unless dnsserver.empty? %>
+      <hostname><%= node.hostname %></hostname>
       <resolv_conf_policy>auto</resolv_conf_policy>
       <write_hostname config:type="boolean">false</write_hostname>
     </dns>
-    <interfaces config:type="list">
-<%= interface unless interface.empty? %>
-      <interface>
-        <aliases>
-          <alias2>
-            <IPADDR>127.0.0.2</IPADDR>
-            <NETMASK>255.0.0.0</NETMASK>
-            <PREFIXLEN>8</PREFIXLEN>
-          </alias2>
-        </aliases>
-        <broadcast>127.255.255.255</broadcast>
-        <device>lo</device>
-        <firewall>no</firewall>
-        <ipaddr>127.0.0.1</ipaddr>
-        <netmask>255.0.0.0</netmask>
-        <network>127.0.0.0</network>
-        <prefixlen>8</prefixlen>
-        <startmode>auto</startmode>
-        <usercontrol>no</usercontrol>
-      </interface>
-    </interfaces>
-    <managed config:type="boolean">false</managed>
   </networking>
   <partitioning config:type="list">
     <drive>
@@ -533,7 +481,6 @@ echo "Starting post_install2"
 /etc/init.d/ntp start
 chkconfig puppet on
 service puppet start
-puppet agent -t
 ]]>
         </source>
       </script>
