@@ -115,45 +115,78 @@ Write-host 'writing new razor client file with IP: ' $asmapplianceip
 New-Item $razorclientloc -ItemType file
 Write-Host 'File created creating strings'
 $string1 = '# -*- powershell -*-#'
-$string2 = '# If we have a configuration file, source it in.'
-$string3 = '$configfile = join-path $env:SYSTEMDRIVE "razor-client-config.ps1"'
-$string4 = 'if (test-path $configfile) {'
-$string5 = '    write-host "sourcing configuration from $configfile"'
-$string6 = '    . $configfile'
-$string7 = '    # $server is now set'
-$string8 = '} else {'
-$string9 = '    # No sign of a configuration file, our DHCP server is also our ASM server.'
-$string10 ='    write-host "DHCP server == Razor server!"'
-$string11 ='    $server = get-wmiobject win32_networkadapterconfiguration |'
-$string12 ='                  where { $_.ipaddress -and'
-$string13 ='                          $_.dhcpenabled -eq "true" -and'
-$string14 ='                          $_.dhcpleaseobtained } |'
-$string15 ='                  select -uniq -first 1 -expandproperty dhcpserver'
-$string16 ='}'
+$String2 = '#'
+$string3 = '# Search for the SET_STATIC_IP.CMD script on all mounted disks. If'
+$string4 = '# the disk isn''t mounted or the script is not found there, just'
+$string5 = '# continue. The script is included in the iPXE iso image in'
+$string6 = '# static OS installation case.'
+$string7 = '#'
+$string8 = '$VolumeName = ''iPXE'''
+$string9 = '$ScriptName = ''SET_STATIC_IP.CMD'''
+$string10 = ''
+$string11 = '# List all drives, grep for ''iPXE'' (the volume name set by the ipxe iso'
+$string12 = '# generator code), and cut the first column (the drive letter plus '':'')'
+$string13 = '$TargetDrive = wmic logicaldisk get ''caption,volumename'' | Select-String -Pattern $VolumeName | Out-String | %{$_.split('' '')[0]}'
+$string14 = ''
+$string15 = '# Strip out \r and \n characters'
+$string16 = '$TargetDrive = ($TargetDrive.Replace("`n", '''')).Replace("`r",'''')'
+$string17 = ''
+$string18 = 'If (-Not ([string]::IsNullOrEmpty($TargetDrive))) {'
+$string19 = '  # Found a volume named $VolumeName, now look for the script file'
+$string20 = '  $ScriptPath = $TargetDrive + ''\'' + $ScriptName'
+$string21 = ''
+$string22 = '  If (test-path $ScriptPath) {'
+$string23 = '    # Found the script, run it'
+$string24 = '    cmd /c $ScriptPath'
+$string25 = ''
+$string26 = '    # Check return code from script'
+$string27 = '    If (-Not ($LASTEXITCODE -eq 0)) {'
+$string28 = '      # Error out if script returned an error'
+$string29 = '      echo "ERROR: Script ''$ScriptName'' returned exit code: $LASTEXITCODE"'
+$string30 = '      exit $LASTEXITCODE'
+$string31 = '    }'
+$string32 = '    echo "Script ''$ScriptName'' executed successfully"'
+$string33 = '  }'
+$string34 = '}'
+$string35 = '# If we have a configuration file, source it in.'
+$string36 = '$configfile = join-path $env:SYSTEMDRIVE "razor-client-config.ps1"'
+$string37 = 'if (test-path $configfile) {'
+$string38 = '    write-host "sourcing configuration from $configfile"'
+$string39 = '    . $configfile'
+$string40 = '    # $server is now set'
+$string41 = '} else {'
+$string42 = '    # No sign of a configuration file, our DHCP server is also our ASM server.'
+$string43 ='    write-host "DHCP server == Razor server!"'
+$string44 ='    $server = get-wmiobject win32_networkadapterconfiguration |'
+$string45 ='                  where { $_.ipaddress -and'
+$string46 ='                          $_.dhcpenabled -eq "true" -and'
+$string47 ='                          $_.dhcpleaseobtained } |'
+$string48 ='                  select -uniq -first 1 -expandproperty dhcpserver'
+$string49 ='}'
 if (check-validip $asmapplianceip) {
     $string17 ='$baseurl = "http://' + $asmapplianceip + ':8080/svc"'
 } else {
     $string17 ='$baseurl = "http://${server}:8080/svc"'
 }
-$string18 ='# Figure out our node hardware ID details'
-$string19 ='$hwid = get-wmiobject Win32_NetworkAdapter -filter "netenabled=''true''" | '
-$string20 ='            select -expandproperty macaddress | '
-$string21 ='            foreach-object -begin { $n = 0 } -process { $n++; "net${n}=${_}"; }'
-$string22 ='$hwid = $hwid -join ''&'' -replace '':'', ''-'''
-$string23 = '# Now, communicate with the server and translate our HWID into a node ID'
-$string24 = '# number that we can use for our next step -- accessing our bound'
-$string25 = '# installer templates.'
-$string26 = 'write-host "contact ${baseurl}/nodeid?${hwid} for ID mapping"'
-$string27 = '$data = invoke-restmethod "${baseurl}/nodeid?${hwid}"'
-$string28 = '$id = $data.id'
-$string29 ='write-host "mapped myself to node ID ${id}"'
-$string30 ='# Finally, fetch down our next stage of script and evaluate it.'
-$string31 ='$url = "${baseurl}/file/${id}/second-stage.ps1"'
-$string32 ='write-host "load and execute ${url}"'
-$string33 ='(new-object System.Net.WebClient).DownloadString($url) | invoke-expression'
-$string34 ='# ...and done. '
-$string35 = 'write-host "second stage completed, exiting."'
-$string36 = 'exit'
+$string50 ='# Figure out our node hardware ID details'
+$string51 ='$hwid = get-wmiobject Win32_NetworkAdapter -filter "netenabled=''true''" | '
+$string52 ='            select -expandproperty macaddress | '
+$string53 ='            foreach-object -begin { $n = 0 } -process { $n++; "net${n}=${_}"; }'
+$string54 ='$hwid = $hwid -join ''&'' -replace '':'', ''-'''
+$string55 = '# Now, communicate with the server and translate our HWID into a node ID'
+$string56 = '# number that we can use for our next step -- accessing our bound'
+$string57 = '# installer templates.'
+$string58 = 'write-host "contact ${baseurl}/nodeid?${hwid} for ID mapping"'
+$string59 = '$data = invoke-restmethod "${baseurl}/nodeid?${hwid}"'
+$string60 = '$id = $data.id'
+$string61 ='write-host "mapped myself to node ID ${id}"'
+$string62 ='# Finally, fetch down our next stage of script and evaluate it.'
+$string63 ='$url = "${baseurl}/file/${id}/second-stage.ps1"'
+$string64 ='write-host "load and execute ${url}"'
+$string65 ='(new-object System.Net.WebClient).DownloadString($url) | invoke-expression'
+$string66 ='# ...and done. '
+$string67 = 'write-host "second stage completed, exiting."'
+$string68 = 'exit'
 Write-Host 'Strings created, writing file'
 $string1 | Out-File $razorclientloc -Append
 $string2 | Out-File $razorclientloc -Append
@@ -191,6 +224,38 @@ $string33 | Out-File $razorclientloc -Append
 $string34 | Out-File $razorclientloc -Append
 $string35 | Out-File $razorclientloc -Append
 $string36 | Out-File $razorclientloc -Append
+$string37 | Out-File $razorclientloc -Append
+$string38 | Out-File $razorclientloc -Append
+$string39 | Out-File $razorclientloc -Append
+$string40 | Out-File $razorclientloc -Append
+$string41 | Out-File $razorclientloc -Append
+$string42 | Out-File $razorclientloc -Append
+$string43 | Out-File $razorclientloc -Append
+$string44 | Out-File $razorclientloc -Append
+$string45 | Out-File $razorclientloc -Append
+$string46 | Out-File $razorclientloc -Append
+$string47 | Out-File $razorclientloc -Append
+$string48 | Out-File $razorclientloc -Append
+$string49 | Out-File $razorclientloc -Append
+$string50 | Out-File $razorclientloc -Append
+$string51 | Out-File $razorclientloc -Append
+$string52 | Out-File $razorclientloc -Append
+$string53 | Out-File $razorclientloc -Append
+$string54 | Out-File $razorclientloc -Append
+$string55 | Out-File $razorclientloc -Append
+$string56 | Out-File $razorclientloc -Append
+$string57 | Out-File $razorclientloc -Append
+$string58 | Out-File $razorclientloc -Append
+$string59 | Out-File $razorclientloc -Append
+$string60 | Out-File $razorclientloc -Append
+$string61 | Out-File $razorclientloc -Append
+$string62 | Out-File $razorclientloc -Append
+$string63 | Out-File $razorclientloc -Append
+$string64 | Out-File $razorclientloc -Append
+$string65 | Out-File $razorclientloc -Append
+$string66 | Out-File $razorclientloc -Append
+$string67 | Out-File $razorclientloc -Append
+$string68 | Out-File $razorclientloc -Append
 
 ########################################################################
 # Some "constants" that might have to change to accommodate different
