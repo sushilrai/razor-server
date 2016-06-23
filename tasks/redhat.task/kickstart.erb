@@ -88,7 +88,7 @@ policycoreutils-python
 # Only install the OS on the first virtual volume
 %pre
   FIRST_PERC_VOL=$(ls -1 /dev/disk/by-path/pci-*-scsi-0:[1-9]:0:0 | head -1)
-  if [$? != 0]; then
+  if [ -z "${FIRST_PERC_VOL}" ]; then
     FIRST_PERC_VOL=$(ls -1 /dev/disk/by-path/pci-*-scsi* | head -1)
   fi
   echo "zerombr" > /tmp/ignoredisk
