@@ -435,18 +435,24 @@
       <surname/>
      </user>
   </users>
-  <ntp-client>
-    <configure_dhcp config:type="boolean">false</configure_dhcp>
-    <peers config:type="list">
-      <peer>
-        <address><%=
+<%
+    ntpserver = ""
     options = node.policy.node_metadata['installer_options'] || {}
-    (options['ntp_server'] || '').strip.size > 0 ? options['ntp_server'] : ""
-%></address>
+    (options['ntp_server'] || '').strip.split(',').each do |ntp|
+    ntpserver = ntpserver + <<-S1
+      <peer>
+        <address>#{ntp}</address>
         <initial_sync config:type="boolean">true</initial_sync>
         <options></options>
         <type>server</type>
       </peer>
+S1
+    end
+%>
+  <ntp-client>
+    <configure_dhcp config:type="boolean">false</configure_dhcp>
+    <peers config:type="list">
+<%= ntpserver unless ntpserver.empty? %>
     </peers>
     <start_at_boot config:type="boolean">true</start_at_boot>
     <start_in_chroot config:type="boolean">true</start_in_chroot>
