@@ -3,7 +3,9 @@ exec >> /var/log/razor.log 2>&1
 
 echo "Starting post_install"
 #Puppet agent may install old version with Sles 11 SP3
-rpm -e puppet-2.6.18-0.4.2
+rpm -e puppet
+rpm -e facter
+rpm -e ruby
 
 rm -rf /var/lib/puppet/ssl
 
@@ -21,10 +23,23 @@ echo "<%= URI.parse(repo_url).host %> dellasm" >> /etc/hosts
 mkdir /tmp/mnt
 mount -o nolock,username=readonly,password=readonly //<%= URI.parse(repo_url).host %>/razor /tmp/mnt
 zypper --non-interactive --no-gpg-checks install /tmp/mnt/puppet-agent/suse11/*.rpm
+update-alternatives --install /usr/bin/ruby ruby /usr/bin/ruby.ruby2.1 1
+update-alternatives --install /usr/bin/gem gem /usr/bin/gem.ruby2.1 1
+gem install --local /tmp/mnt/puppet-agent/suse11/facter-2.4.6.gem --no-ri --no-rdoc --bindir /usr/bin
+gem install --local /tmp/mnt/puppet-agent/suse11/hiera-1.0.0.gem --no-ri --no-rdoc --bindir /usr/bin
+gem install --local /tmp/mnt/puppet-agent/suse11/json_pure-2.0.1.gem --no-ri --no-rdoc --bindir /usr/bin
+gem install --local /tmp/mnt/puppet-agent/suse11/rgen-0.6.5.gem --no-ri --no-rdoc --bindir /usr/bin
+gem install --local /tmp/mnt/puppet-agent/suse11/puppet-3.6.2.gem --no-ri --no-rdoc --bindir /usr/bin
+update-alternatives --install /usr/bin/puppet puppet /usr/bin/puppet.ruby2.1  1
+update-alternatives --install /usr/bin/facter facter /usr/bin/facter.ruby2.1  1
+cp /tmp/mnt/puppet-agent/suse11/puppet /etc/init.d/
+chmod 755 /etc/init.d/puppet
 umount /tmp/mnt
 rm -rf /tmp/mnt
 
 #update puppet.conf file
+mkdir /etc/puppet
+touch /etc/puppet/puppet.conf
 cat > /etc/puppet/puppet.conf << EOF
 [main]
     server = dellasm
@@ -44,6 +59,8 @@ echo ========================================================================
 
 #update /etc/sysconfig/puppet
 cat > /etc/sysconfig/puppet << EOF
+PUPPET_SERVER=dellasm
+PUPPPET_LOG=/var/log/puppet/puppet.log
 PUPPET_EXTRA_OPTS=""
 EOF
 
