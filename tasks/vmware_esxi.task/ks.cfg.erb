@@ -72,8 +72,11 @@ reboot --noeject
 %pre --interpreter=busybox
 wget <%= stage_done_url("kickstart") %>
 
-# echo 'network --bootproto=static --addvmportgroup=false --device=vmnic0 --ip=<%= @node_ip_address %> --netmask=<%= @ip_range_subnet %> --gateway=<%= @gateway %> --nameserver=<%= @nameserver %> --hostname=<%= @node_hostname %>' > /tmp/networkconfig
-
+for DISK in $(ls /dev/disks | grep -v vml| grep ATA); do
+  DISK_PATH=/dev/disks/${DISK}
+  partedUtil mklabel $DISK_PATH msdos
+done
+echo "Pre execution done"
 
 
 %firstboot --interpreter=busybox
