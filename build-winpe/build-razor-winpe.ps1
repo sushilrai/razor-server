@@ -164,29 +164,29 @@ $string47 ='                          $_.dhcpleaseobtained } |'
 $string48 ='                  select -uniq -first 1 -expandproperty dhcpserver'
 $string49 ='}'
 if (check-validip $asmapplianceip) {
-    $string17 ='$baseurl = "http://' + $asmapplianceip + ':8080/svc"'
+    $string50 ='$baseurl = "http://' + $asmapplianceip + ':8080/svc"'
 } else {
-    $string17 ='$baseurl = "http://${server}:8080/svc"'
+    $string50 ='$baseurl = "http://${server}:8080/svc"'
 }
-$string50 ='# Figure out our node hardware ID details'
-$string51 ='$hwid = get-wmiobject Win32_NetworkAdapter -filter "netenabled=''true''" | '
-$string52 ='            select -expandproperty macaddress | '
-$string53 ='            foreach-object -begin { $n = 0 } -process { $n++; "net${n}=${_}"; }'
-$string54 ='$hwid = $hwid -join ''&'' -replace '':'', ''-'''
-$string55 = '# Now, communicate with the server and translate our HWID into a node ID'
-$string56 = '# number that we can use for our next step -- accessing our bound'
-$string57 = '# installer templates.'
-$string58 = 'write-host "contact ${baseurl}/nodeid?${hwid} for ID mapping"'
-$string59 = '$data = invoke-restmethod "${baseurl}/nodeid?${hwid}"'
-$string60 = '$id = $data.id'
-$string61 ='write-host "mapped myself to node ID ${id}"'
-$string62 ='# Finally, fetch down our next stage of script and evaluate it.'
-$string63 ='$url = "${baseurl}/file/${id}/second-stage.ps1"'
-$string64 ='write-host "load and execute ${url}"'
-$string65 ='(new-object System.Net.WebClient).DownloadString($url) | invoke-expression'
-$string66 ='# ...and done. '
-$string67 = 'write-host "second stage completed, exiting."'
-$string68 = 'exit'
+$string51 ='# Figure out our node hardware ID details'
+$string52 ='$hwid = get-wmiobject Win32_NetworkAdapter -filter "netenabled=''true''" | '
+$string53 ='            select -expandproperty macaddress | '
+$string54 ='            foreach-object -begin { $n = 0 } -process { $n++; "net${n}=${_}"; }'
+$string55 ='$hwid = $hwid -join ''&'' -replace '':'', ''-'''
+$string56 = '# Now, communicate with the server and translate our HWID into a node ID'
+$string57 = '# number that we can use for our next step -- accessing our bound'
+$string58 = '# installer templates.'
+$string59 = 'write-host "contact ${baseurl}/nodeid?${hwid} for ID mapping"'
+$string60 = '$data = invoke-restmethod "${baseurl}/nodeid?${hwid}"'
+$string61 = '$id = $data.id'
+$string62 ='write-host "mapped myself to node ID ${id}"'
+$string63 ='# Finally, fetch down our next stage of script and evaluate it.'
+$string64 ='$url = "${baseurl}/file/${id}/second-stage.ps1"'
+$string65 ='write-host "load and execute ${url}"'
+$string66 ='(new-object System.Net.WebClient).DownloadString($url) | invoke-expression'
+$string67 ='# ...and done. '
+$string68 = 'write-host "second stage completed, exiting."'
+$string69 = 'exit'
 Write-Host 'Strings created, writing file'
 $string1 | Out-File $razorclientloc -Append
 $string2 | Out-File $razorclientloc -Append
@@ -256,6 +256,7 @@ $string65 | Out-File $razorclientloc -Append
 $string66 | Out-File $razorclientloc -Append
 $string67 | Out-File $razorclientloc -Append
 $string68 | Out-File $razorclientloc -Append
+$string69 | Out-File $razorclientloc -Append
 
 ########################################################################
 # Some "constants" that might have to change to accommodate different
