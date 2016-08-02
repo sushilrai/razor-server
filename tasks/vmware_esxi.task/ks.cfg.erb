@@ -76,6 +76,20 @@ for DISK in $(ls /dev/disks | grep -v vml| grep ATA); do
   DISK_PATH=/dev/disks/${DISK}
   partedUtil mklabel $DISK_PATH msdos
 done
+
+disk_paths=`localcli storage core device list | grep "Devfs Path"`
+for disk in $disk_paths; do
+  if [ "$disk" == "Path:" -o "$disk" == "Devfs" ] ;  then
+    continue
+  fi
+  device=`basename $disk`
+  disk_info=`localcli storage core device list -d $device`
+  local=`echo $disk_info | grep -i "Local ATA Disk" | grep -i "Is Local: true"`
+  if [ $? -eq 0 ]; then
+    echo "Local disk: $device"
+    echo "Disk info: $disk_info"
+  fi
+done
 echo "Pre execution done"
 
 
