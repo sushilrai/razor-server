@@ -114,7 +114,7 @@
 
        <RunSynchronousCommand wcm:action="add">
         <Description>Updating registry to run Puppet config script on every reboot</Description>
-        <Order>3</Order>
+        <Order>4</Order>
         <Path>REG.EXE ADD HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v PuppetCmd /t REG_SZ /d &quot;cmd /c c:\Progra~2\Puppet~1\Puppet\bin\puppet.bat config set configtimeout 600 --section main &quot; /f</Path>
       </RunSynchronousCommand>
 
