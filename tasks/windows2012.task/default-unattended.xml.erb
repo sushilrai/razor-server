@@ -121,6 +121,13 @@
           <Order>2</Order>
           <Path>msiexec /i \\<%= URI.parse(repo_url).host %>\razor\puppet-agent\windows\puppet-3.6.2.msi /qn PUPPET_MASTER_SERVER=&quot;dellasm&quot; PUPPET_AGENT_CERTNAME=&quot;<%= node.policy.node_metadata['installer_options']['agent_certname'] %>&quot; PUPPET_AGENT_ACCOUNT_USER=&quot;NetworkService&quot; </Path>
         </RunSynchronousCommand>
+
+      <RunSynchronousCommand wcm:action="add">
+        <Description>Updating registry to run ASM script on every reboot</Description>
+        <Order>3</Order>
+        <Path>REG.EXE ADD HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v PuppetCmd /t REG_SZ /d &quot;cmd /c c:\Progra~2\Puppet~1\Puppet\bin\puppet.bat config set configtimeout 600 --section main &quot; /f</Path>
+      </RunSynchronousCommand>
+
         <%=
           if os.ntp_server
              ntp_servers = os.ntp_server.delete(" ").split(",").join(" ")
@@ -129,26 +136,22 @@
              command3 = "powershell.exe -Command restart-Service w32time"
              str = "<RunSynchronousCommand wcm:action=\"add\">
           <Description>NTP Server configuration</Description>
-          <Order>3</Order>
+          <Order>4</Order>
           <Path>#{command1}</Path>
         </RunSynchronousCommand>
         <RunSynchronousCommand wcm:action=\"add\">
           <Description>Configure service w32time as Delayed Automatic</Description>
-          <Order>4</Order>
+          <Order>5</Order>
           <Path>#{command2}</Path>
         </RunSynchronousCommand>
         <RunSynchronousCommand wcm:action=\"add\">
           <Description>Start time configuration</Description>
-          <Order>5</Order>
+          <Order>6</Order>
           <Path>#{command3}</Path>
         </RunSynchronousCommand>"
           end
         %>
-        <RunSynchronousCommand wcm:action="add">
-          <Description>Configure Puppet Agent config timeout</Description>
-          <Order>6</Order>
-          <Path>puppet config set configtimeout 600</Path>
-        </RunSynchronousCommand>
+
       </RunSynchronous>
     </component>
 
