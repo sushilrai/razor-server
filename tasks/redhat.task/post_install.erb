@@ -81,6 +81,7 @@ cat > /etc/puppet/puppet.conf << EOF
     logdir = /var/log/puppet
     rundir = /var/run/puppet
     ssldir = \$vardir/ssl
+    configtimeout = 600
 [agent]
     classfile   = \$vardir/classes.txt
     localconfig = \$vardir/localconfig

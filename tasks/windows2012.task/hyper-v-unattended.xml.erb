@@ -112,6 +112,12 @@
         <Path>REG.EXE ADD HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v ASMScript /t REG_SZ /d &quot;cmd /c c:\ASMPostInstall\ASMScript.cmd&quot; /f</Path>
       </RunSynchronousCommand>
 
+       <RunSynchronousCommand wcm:action="add">
+        <Description>Updating registry to run Puppet config script on every reboot</Description>
+        <Order>4</Order>
+        <Path>REG.EXE ADD HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v PuppetCmd /t REG_SZ /d &quot;cmd /c c:\Progra~2\Puppet~1\Puppet\bin\puppet.bat config set configtimeout 600 --section main &quot; /f</Path>
+      </RunSynchronousCommand>
+
       <%=
           if os.ntp_server
              ntp_servers = os.ntp_server.delete(" ").split(",").join(" ")
@@ -120,17 +126,17 @@
              command3 = "powershell.exe -Command restart-Service w32time"
              str = "<RunSynchronousCommand wcm:action=\"add\">
           <Description>NTP Server configuration</Description>
-          <Order>3</Order>
+          <Order>5</Order>
           <Path>#{command1}</Path>
         </RunSynchronousCommand>
         <RunSynchronousCommand wcm:action=\"add\">
           <Description>Configure service w32time as Delayed Automatic</Description>
-          <Order>4</Order>
+          <Order>6</Order>
           <Path>#{command2}</Path>
         </RunSynchronousCommand>
         <RunSynchronousCommand wcm:action=\"add\">
           <Description>Start time configuration</Description>
-          <Order>5</Order>
+          <Order>7</Order>
           <Path>#{command3}</Path>
         </RunSynchronousCommand>"
           end
