@@ -15,6 +15,7 @@ rootpw --iscrypted <%=
 %>
 <%=
 disk_arg = ""
+boot_device = ""
 options = node.policy.node_metadata['installer_options']
 if options && !options.empty?
   boot_device = options['target_boot_device'] || ''
@@ -22,8 +23,13 @@ if options && !options.empty?
     disk_arg += "=usb-storage"
   end
 end
-"clearpart --firstdisk#{disk_arg} --overwritevmfs
-install --firstdisk#{disk_arg}  --overwritevmfs"
+
+if boot_device == "VSAN_AHCI"
+  "%include /tmp/disk_info"
+else
+  "clearpart --firstdisk#{disk_arg} --overwritevmfs
+   install --firstdisk#{disk_arg}  --overwritevmfs"
+end
 %>
 
 # Set the network to DHCP on the first network adapater
@@ -75,6 +81,25 @@ wget <%= stage_done_url("kickstart") %>
 for DISK in $(ls /dev/disks | grep -v vml| grep ATA); do
   DISK_PATH=/dev/disks/${DISK}
   partedUtil mklabel $DISK_PATH msdos
+done
+
+disk_paths=`localcli storage core device list | grep "Devfs Path"`
+for disk in $disk_paths; do
+  if [ "$disk" == "Path:" -o "$disk" == "Devfs" ] ;  then
+    continue
+  fi
+  device=`basename $disk`
+  local_ata=`localcli storage core device list -d $device | grep -i "Local ATA Disk"`
+  if [ $? -eq 0 ]; then
+    local_sas=`localcli storage core device list -d $device | grep -i "Is SAS: false"`
+    if [ $? -ne 0 ] ; then
+      continue
+    fi
+    model=`localcli storage core device list -d $device | grep -i "Model:" | cut -d ":" -f2`
+    model=`echo $model | awk '{$1=$1;print}'`
+    echo clearpart --firstdisk=${model},local --overwritevmfs > /tmp/disk_info
+    echo install --firstdisk=${model},local --overwritevmfs >> /tmp/disk_info
+  fi
 done
 echo "Pre execution done"
 
