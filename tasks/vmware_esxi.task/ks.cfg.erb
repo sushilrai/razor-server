@@ -24,7 +24,7 @@ if options && !options.empty?
   end
 end
 
-if boot_device == "VSAN_AHCI"
+if boot_device == "AHCI_VSAN"
   "%include /tmp/disk_info"
 else
   "clearpart --firstdisk#{disk_arg} --overwritevmfs
