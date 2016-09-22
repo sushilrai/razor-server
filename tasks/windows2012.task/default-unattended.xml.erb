@@ -112,7 +112,7 @@
           if os.ntp_server
              ntp_servers = os.ntp_server.delete(" ").split(",").join(" ")
              command1 = "cmd /c w32tm /config /manualpeerlist:\"#{ntp_servers}\" /syncfromflags:MANUAL"
-             command2 = "cmd /c &quot;sc config w32time start= delayed-auto&quot;"
+             command2 = "cmd /c &quot;sc config w32time start= auto&quot;"
              command3 = "powershell.exe -Command restart-Service w32time"
              str = "<RunSynchronousCommand wcm:action=\"add\">
           <Description>NTP Server configuration</Description>
@@ -120,7 +120,7 @@
           <Path>#{command1}</Path>
         </RunSynchronousCommand>
         <RunSynchronousCommand wcm:action=\"add\">
-          <Description>Configure service w32time as Delayed Automatic</Description>
+          <Description>Configure service w32time as Automatic</Description>
           <Order>2</Order>
           <Path>#{command2}</Path>
         </RunSynchronousCommand>
@@ -152,7 +152,11 @@
         <Path>REG.EXE ADD HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v PuppetCmd /t REG_SZ /d &quot;cmd /c c:\Progra~2\Puppet~1\Puppet\bin\puppet.bat config set configtimeout 600 --section main &quot; /f</Path>
       </RunSynchronousCommand>
 
-
+      <RunSynchronousCommand wcm:action="add">
+         <Description>Configure service puppet as delayed Automatic</Description>
+         <Order>7</Order>
+         <Path>cmd /c &quot;sc config puppet start= delayed-auto&quot;</Path>
+        </RunSynchronousCommand>
       </RunSynchronous>
     </component>
 
