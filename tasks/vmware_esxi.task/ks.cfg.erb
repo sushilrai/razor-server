@@ -97,8 +97,8 @@ for disk in $disk_paths; do
     fi
     model=`localcli storage core device list -d $device | grep -i "Model:" | cut -d ":" -f2`
     model=`echo $model | awk '{$1=$1;print}'`
-    echo clearpart --firstdisk=${model},local --overwritevmfs > /tmp/disk_info
-    echo install --firstdisk=${model},local --overwritevmfs >> /tmp/disk_info
+    echo clearpart --firstdisk=\"${model}\",local --overwritevmfs > /tmp/disk_info
+    echo install --firstdisk=\"${model}\",local --overwritevmfs >> /tmp/disk_info
   fi
 done
 echo "Pre execution done"
