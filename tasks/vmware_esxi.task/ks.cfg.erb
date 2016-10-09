@@ -78,10 +78,11 @@ reboot --noeject
 %pre --interpreter=busybox
 wget <%= stage_done_url("kickstart") %>
 
-for DISK in $(ls /dev/disks | grep -v vml| grep ATA); do
+for DISK in $(ls /dev/disks | grep -v vml); do
   DISK_PATH=/dev/disks/${DISK}
   partedUtil mklabel $DISK_PATH msdos
 done
+
 
 disk_paths=`localcli storage core device list | grep "Devfs Path"`
 for disk in $disk_paths; do
@@ -101,6 +102,21 @@ for disk in $disk_paths; do
     echo install --firstdisk=\"${model}\",local --overwritevmfs >> /tmp/disk_info
   fi
 done
+
+# Cleanup VSAN Partition data
+disk_paths=`localcli storage core device list | grep "Devfs Path"`
+for disk in $disk_paths; do
+  if [ "$disk" == "Path:" -o "$disk" == "Devfs" ] ;  then
+    continue
+  fi
+  echo "Disk: $disk"
+  partition_data=`partedUtil getptbl $disk | grep vsan | awk '{print -f1}'`
+  if [ $? -eq 0 ] ; then
+    echo "Partition Data: $partition_data"
+    partedUtil delete $disk partition_data
+  fi
+done
+
 echo "Pre execution done"
 
 
