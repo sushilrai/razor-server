@@ -104,7 +104,7 @@ for disk in $disk_paths; do
 done
 
 # Cleanup VSAN Partition data
-disk_paths=`localcli storage core device list | grep "Devfs Path"`
+disk_paths=`localcli storage core device list | grep "Devfs Path" | grep -vi "cdrom"`
 for disk in $disk_paths; do
   if [ "$disk" == "Path:" -o "$disk" == "Devfs" ] ;  then
     continue
