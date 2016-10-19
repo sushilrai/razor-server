@@ -74,20 +74,7 @@ if [ "$ntp_server" != "" ]; then
 <% end %>
 fi
 
-#update puppet.conf file
-cat > /etc/puppet/puppet.conf << EOF
-[main]
-    server = dellasm
-    logdir = /var/log/puppet
-    rundir = /var/run/puppet
-    ssldir = \$vardir/ssl
-    configtimeout = 600
-[agent]
-    classfile   = \$vardir/classes.txt
-    localconfig = \$vardir/localconfig
-    certname    = <%= node.policy.node_metadata['installer_options']['agent_certname'] %>
-
-EOF
+<%= render_template("puppet_conf") %>
 
 # Nagios NRPE configuration, used only for C* series machines
 if [[ "$(/usr/bin/facter productname)" =~ ^PowerEdge\ C62[0-9]+ ]]; then
