@@ -18,19 +18,7 @@ zypper --non-interactive --no-gpg-checks install /tmp/mnt/puppet-agent/suse12/*.
 umount /tmp/mnt
 rm -rf /tmp/mnt
 
-#update puppet.conf file
-cat > /etc/puppet/puppet.conf << EOF
-[main]
-    server = dellasm
-    logdir = /var/log/puppet
-    rundir = /var/run/puppet
-    ssldir = \$vardir/ssl
-[agent]
-    classfile   = \$vardir/classes.txt
-    localconfig = \$vardir/localconfig
-    certname    = <%= node.policy.node_metadata['installer_options']['agent_certname'] %>
-
-EOF
+<%= render_template("puppet_conf") %>
 
 # For debugging, just in case, dump out the modified confirmation file.
 #echo ====================[ /etc/puppet/puppet.conf ]=========================
