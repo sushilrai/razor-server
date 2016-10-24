@@ -90,12 +90,14 @@ for disk in $disk_paths; do
     continue
   fi
   device=`basename $disk`
-  local_ata=`localcli storage core device list -d $device | grep -i "Local ATA Disk"`
+  local_ata=`localcli storage core device list -d $device | grep -iE "Local ATA Disk|DELL Serial"`
   if [ $? -eq 0 ]; then
     local_sas=`localcli storage core device list -d $device | grep -i "Is SAS: false"`
-    if [ $? -ne 0 ] ; then
+    local_ata_dell=`localcli storage core device list -d $device | grep -iE "DELL Serial"`
+    if [ $? -ne 0 -a "$local_ata_dell" -ne ""] ; then
       continue
     fi
+
     model=`localcli storage core device list -d $device | grep -i "Model:" | cut -d ":" -f2`
     model=`echo $model | awk '{$1=$1;print}'`
     echo clearpart --firstdisk=\"${model}\",local --overwritevmfs > /tmp/disk_info
