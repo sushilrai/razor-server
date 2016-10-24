@@ -146,16 +146,22 @@
           <Path>msiexec /i \\<%= URI.parse(repo_url).host %>\razor\puppet-agent\windows\puppet-3.6.2.msi /qn PUPPET_MASTER_SERVER=&quot;dellasm&quot; PUPPET_AGENT_CERTNAME=&quot;<%= node.policy.node_metadata['installer_options']['agent_certname'] %>&quot; PUPPET_AGENT_ACCOUNT_USER=&quot;NetworkService&quot; </Path>
         </RunSynchronousCommand>
 
-      <RunSynchronousCommand wcm:action="add">
-        <Description>Updating registry to run ASM script on every reboot</Description>
-        <Order>6</Order>
-        <Path>REG.EXE ADD HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v PuppetCmd /t REG_SZ /d &quot;cmd /c c:\Progra~2\Puppet~1\Puppet\bin\puppet.bat config set configtimeout 600 --section main &quot; /f</Path>
-      </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Description>Updating registry to run ASM script on every reboot</Description>
+          <Order>6</Order>
+          <Path>REG.EXE ADD HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v PuppetCmd /t REG_SZ /d &quot;cmd /c c:\Progra~2\Puppet~1\Puppet\bin\puppet.bat config set configtimeout 600 --section main &quot; /f</Path>
+        </RunSynchronousCommand>
 
-      <RunSynchronousCommand wcm:action="add">
-         <Description>Configure service puppet as delayed Automatic</Description>
-         <Order>7</Order>
-         <Path>cmd /c &quot;sc config puppet start= delayed-auto&quot;</Path>
+        <RunSynchronousCommand wcm:action="add">
+           <Description>Configure service puppet as delayed Automatic</Description>
+           <Order>7</Order>
+           <Path>cmd /c &quot;sc config puppet start= delayed-auto&quot;</Path>
+          </RunSynchronousCommand>
+
+        <RunSynchronousCommand wcm:action="add">
+          <Description>Set poll interval for puppet runs</Description>
+          <Order>8</Order>
+          <Path>REG.EXE ADD HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce /v PuppetCmd /t REG_SZ /d &quot;cmd /c c:\Progra~2\Puppet~1\Puppet\bin\puppet.bat config set runinterval 5m --section main &quot; /f</Path>
         </RunSynchronousCommand>
       </RunSynchronous>
     </component>

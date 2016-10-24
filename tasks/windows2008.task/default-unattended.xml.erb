@@ -111,6 +111,12 @@
          <Order>7</Order>
          <Path>cmd /c &quot;sc config puppet start= delayed-auto&quot;</Path>
         </RunSynchronousCommand>
+
+        <RunSynchronousCommand wcm:action="add">
+          <Description>Set poll interval for puppet runs</Description>
+          <Order>8</Order>
+          <Path>REG.EXE ADD HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce /v PuppetCmd /t REG_SZ /d &quot;cmd /c c:\Progra~2\Puppet~1\Puppet\bin\puppet.bat config set runinterval 5m --section main &quot; /f</Path>
+        </RunSynchronousCommand>
       </RunSynchronous>
     </component>
 
