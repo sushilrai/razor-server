@@ -190,6 +190,8 @@ vim-cmd hostsvc/maintenance_mode_enter
 wget -O /tmp/vmware-esx-provider-lsiprovider.vib <%= compose_url('/svc/repo/puppet-agent/esxi/vmware-esx-provider-lsiprovider.vib') %>
 esxcli software vib install -v /tmp/vmware-esx-provider-lsiprovider.vib
 
+wget <%= stage_done_url("finished") %>
+
 ### FIREWALL CONFIGURATION ###
 
 # enable firewall
@@ -207,5 +209,4 @@ done
 # copy %first boot script logs to persisted datastore
 cp /var/log/hostd.log "/vmfs/volumes/$(hostname -s)-local-storage-1/firstboot-hostd.log"
 cp /var/log/esxi_install.log "/vmfs/volumes/$(hostname -s)-local-storage-1/firstboot-esxi_install.log"
-wget <%= stage_done_url("finished") %>
 reboot
