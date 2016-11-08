@@ -192,6 +192,9 @@ vim-cmd hostsvc/maintenance_mode_enter
 wget -O /tmp/vmware-esx-provider-lsiprovider.vib <%= compose_url('/svc/repo/puppet-agent/esxi/vmware-esx-provider-lsiprovider.vib') %>
 esxcli software vib install -v /tmp/vmware-esx-provider-lsiprovider.vib
 
+## Disable firewall to call stage_done_url
+esxcli network firewall set --default-action false --enabled no
+
 wget <%= stage_done_url("finished") %>
 
 ### FIREWALL CONFIGURATION ###
