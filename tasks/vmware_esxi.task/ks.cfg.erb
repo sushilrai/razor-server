@@ -20,7 +20,7 @@ options = node.policy.node_metadata['installer_options']
 if options && !options.empty?
   boot_device = options['target_boot_device'] || ''
   if boot_device.include?("SD")
-    disk_arg += "=usb-storage"
+    disk_arg += "=usb"
   end
 end
 
