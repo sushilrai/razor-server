@@ -93,7 +93,7 @@ for disk in $disk_paths; do
   local_ata=`localcli storage core device list -d $device | grep -iE "Local ATA Disk|DELL Serial|Local DELL Disk"`
   if [ $? -eq 0 ]; then
     local_sas=`localcli storage core device list -d $device | grep -i "Is SAS: false"`
-    local_ata_dell=`localcli storage core device list -d $device | grep -iE "DELL Serial"`
+    local_ata_dell=`localcli storage core device list -d $device | grep -iE "DELL Serial|Local DELL Disk"`
     if [ -z "$local_sas" -a -z "$local_ata_dell" ] ; then
       continue
     fi
