@@ -119,6 +119,16 @@ for disk in $disk_paths; do
   fi
 done
 
+# Cleanup VMFS Partition data
+for DISK in $(ls /vmfs/devices/disks | grep -v vml);
+  do
+    DISK_PATH=/vmfs/devices/disks/${DISK}
+    VMFS_PARTITION_ID=$(partedUtil getptbl ${DISK_PATH} | grep vmfs | awk '{print $1}')
+    if [[ ! -z ${VMFS_PARTITION_ID} ]] && [[ ${VMFS_PARTITION_ID} -eq 3 ]]; then
+      partedUtil delete ${DISK_PATH} 3
+    fi
+done
+
 echo "Pre execution done"
 
 
