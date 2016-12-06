@@ -80,6 +80,12 @@ wget <%= stage_done_url("kickstart") %>
 
 for DISK in $(ls /dev/disks | grep -v vml); do
   DISK_PATH=/dev/disks/${DISK}
+  is_local=`localcli storage core device list -d $DISK | grep -i "Is Local: true"`
+  echo "Is local output: $is_local"
+  if [ -z "$is_local" ] ; then
+    echo "skipping non local disk $DISK"
+    continue
+  fi
   partedUtil mklabel $DISK_PATH msdos
 done
 
@@ -112,6 +118,12 @@ for disk in $disk_paths; do
     continue
   fi
   echo "Disk: $disk"
+  is_local=`localcli storage core device list -d $DISK | grep -i "Is Local: true"`
+  echo "Is local output: $is_local"
+  if [ -z "$is_local" ] ; then
+    echo "skipping non local disk $DISK"
+    continue
+  fi
   partition_data=`partedUtil getptbl $disk | grep vsan | awk '{print -f1}'`
   if [ $? -eq 0 ] ; then
     echo "Partition Data: $partition_data"
@@ -123,8 +135,17 @@ done
 for DISK in $(ls /vmfs/devices/disks | grep -v vml);
   do
     DISK_PATH=/vmfs/devices/disks/${DISK}
+    echo "Disk Path: $DISK_PATH"
+    is_local=`localcli storage core device list -d $DISK | grep -i "Is Local: true"`
+    echo "Is local output: $is_local"
+    if [ -z "$is_local" ] ; then
+      echo "skipping non local disk $DISK"
+      continue
+    fi
+
     VMFS_PARTITION_ID=$(partedUtil getptbl ${DISK_PATH} | grep vmfs | awk '{print $1}')
     if [[ ! -z ${VMFS_PARTITION_ID} ]] && [[ ${VMFS_PARTITION_ID} -eq 3 ]]; then
+      echo "Deleting partion for disk $disk_path"
       partedUtil delete ${DISK_PATH} 3
     fi
 done
