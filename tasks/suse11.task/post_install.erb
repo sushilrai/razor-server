@@ -16,8 +16,8 @@ rm -rf /var/lib/puppet/ssl
 #add the puppet master host entry in /etc/hosts
 echo "<%= URI.parse(repo_url).host %> dellasm" >> /etc/hosts
 
-#ensure ntp is running
-/etc/init.d/ntp start
+#ensure ntp is running (It should already have been started in aytoyast but needs a restart to resolve dellasm hostname)
+/etc/init.d/ntp restart
 
 #Install the puppet agent
 mkdir /tmp/mnt
