@@ -455,7 +455,7 @@ S1
 <%= ntpserver unless ntpserver.empty? %>
     </peers>
     <start_at_boot config:type="boolean">true</start_at_boot>
-    <start_in_chroot config:type="boolean">true</start_in_chroot>
+    <start_in_chroot config:type="boolean">false</start_in_chroot>
   </ntp-client>
   <scripts>
     <chroot-scripts config:type="list">

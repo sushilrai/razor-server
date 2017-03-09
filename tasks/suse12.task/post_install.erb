@@ -29,6 +29,9 @@ cat /etc/puppet/puppet.conf
 chkconfig puppet on
 service puppet start
 
+#ensure ntp is running (It should already have been started in aytoyast but needs a restart to resolve dellasm hostname)
+/etc/init.d/ntp restart
+
 cat <<EOF > /etc/motd
 Installed by Razor using <%= task.label %> - <%= task.description %>
 Repo: <%= repo_url %>
