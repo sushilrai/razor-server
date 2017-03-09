@@ -194,6 +194,9 @@ esxcli system syslog config logger set --id=vmkernel --rotate=20 --size=2048
 esxcli system syslog config logger set --id=fdm --rotate=20
 esxcli system syslog config logger set --id=vpxa --rotate=20
 
+#add the puppet master host entry in /etc/hosts
+echo "<%= URI.parse(repo_url).host %> dellasm" >> /etc/hosts
+
 # NTP Setting
 ntp_server="<%=
     require 'asm/util'
