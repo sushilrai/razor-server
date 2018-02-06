@@ -1,6 +1,7 @@
 # -*- encoding: utf-8 -*-
 require 'set'
 require 'forwardable'
+require_relative '../help'
 
 class Razor::Validation::HashSchema
   def initialize(command)
@@ -10,6 +11,11 @@ class Razor::Validation::HashSchema
     @attributes          = {}
     @extra_attr_patterns = {}
     @require_one_of      = []
+  end
+
+  # Check if request is from localhost and if bypass for localhost is enabled
+  def local_request?
+    request.ip == '127.0.0.1' and Razor.config['auth.allow_localhost']
   end
 
   # Perform any final checks that our content is sane, for things that could
@@ -27,6 +33,23 @@ class Razor::Validation::HashSchema
       end
     end
 
+    positions = []
+    @attributes.each do |_, attr|
+      attr.position and positions << attr.position
+    end
+    positions.sort!
+    unless positions.uniq.length == positions.length
+      raise ArgumentError, "positional argument indices should be unique"
+    end
+    unless positions.empty? or positions[0] == 0
+      raise ArgumentError, "positional argument indices should begin at 0 (found #{positions[0]})"
+    end
+    positions.each_with_index do |pos, idx|
+      unless pos == idx
+        raise ArgumentError, "positional argument indices should be sequential (#{pos} is present but #{idx} is absent)"
+      end
+    end
+
     @attributes.each {|_, attr| attr.finalize(self) }
   end
 
@@ -34,8 +57,7 @@ class Razor::Validation::HashSchema
   # our help.  This keeps responsibility for the internals of the schema
   # documentation inside the object; we just throw it raw into the help
   # template when required.
-  HelpTemplate = ERB.new(_(<<-ERB), nil, '%')
-<%= @help %>
+  HelpTemplate = ERB.new(Razor::Help.scrub(_(<<-ERB)), nil, '%')
 % if @authz_template
 # Access Control
 
@@ -60,16 +82,18 @@ file; on this server security is currently <%= auth %>.
 %end
 % unless @attributes.empty?
 # Attributes
-
 %   @attributes.each do |name, attr|
+
  * <%= name %>
-<%= attr.to_s %>
+<%= attr.help %>
 %   end
 % end
   ERB
 
-  def to_s
-    HelpTemplate.result(binding)
+  def help
+    if @authz_template or not @attributes.empty?
+      HelpTemplate.result(binding)
+    end
   end
 
   def attribute(name)
@@ -81,7 +105,17 @@ file; on this server security is currently <%= auth %>.
     path.empty? and _('the command') or path
   end
 
-  def validate!(data, path)
+  # The validation for this class is roughly:
+  # - Fundamental type validation
+  # - Checking authz
+  # - Running alias mutation
+  # - Running user-supplied `conform!`
+  # - Checking existing attributes
+  # - Checking `require_one_of`
+  # - Checking for additional attributes
+  #
+  # `opts` can include `:local_bypass` of `true` if authz should be skipped.
+  def validate!(data, path, opts = {})
     checked = {}
 
     # Ensure that we have the correct base data type, since nothing else will
@@ -111,7 +145,7 @@ file; on this server security is currently <%= auth %>.
 This is an internal error; please report it to Puppet Labs
 at https://tickets.puppetlabs.com/
       EOT
-    elsif @authz_template and Razor.config['auth.enabled']
+    elsif @authz_template and Razor.config['auth.enabled'] and not opts[:local_bypass]
       fields = @authz_dependencies.inject({}) do |hash, name|
         hash[name.to_sym] = data[name]
         hash
@@ -120,6 +154,26 @@ at https://tickets.puppetlabs.com/
       authz = @authz_template % fields
 
       org.apache.shiro.SecurityUtils.subject.check_permissions(authz)
+    end
+
+    # Run the aliases for the command.
+    apply_aliases!(data)
+
+    # Run the user-supplied `conform!` method. This will perform various
+    # mutations that must occur before we perform the attribute validation.
+    # This is passed as a block because the method itself is on the command.
+    if block_given?
+      old_data = data.to_json
+      data = yield data
+      # Sanity check that the user-supplied `conform!` method indeed returns the
+      # correct datatype.
+      unless data.class <= Hash
+        raise _(<<-ERR) % {class: self.class, type: data.class, body: old_data.inspect}
+Internal error: Please report this to JIRA at http://jira.puppetlabs.com/
+`%{class}.conform!` returned unexpected class %{type} instead of Hash
+Body is: '%{body}'
+        ERR
+      end
     end
 
     # Now, check any remaining attributes.
@@ -164,6 +218,49 @@ at https://tickets.puppetlabs.com/
     end
   end
 
+  def apply_aliases!(data)
+    # Run through the list of aliases for each attribute, which will perform
+    # the proper reassignment for future steps.
+    @attributes.each do |attr, check|
+      check.aliases && check.aliases.each do |aliaz|
+        data = run_alias(data, aliaz, attr)
+      end
+    end
+    data
+  end
+
+  # This adds an alias between two attributes. If a block is provided, it will
+  # be used to combine the attributes in the case that both exist. If no block
+  # is provided, only one of the attributes can be supplied, else an error is
+  # thrown. When the alias operation completes, the alias will be removed from
+  # the `data` hash.
+  def run_alias(data, alias_name, real_attribute)
+    real = data[real_attribute]
+    aliaz = data[alias_name]
+    # Only matters if the alias is provided.
+    if aliaz
+      data[real_attribute] =
+          if real
+            # Merge the data.
+            if block_given?
+              yield(aliaz, real)
+            elsif aliaz.is_a?(Array) and real.is_a?(Array)
+              # Easy to combine Arrays.
+              (real + aliaz).uniq
+            elsif aliaz.is_a?(Hash) and real.is_a?(Hash)
+              # Easy to combine Hashes.
+              real.merge(aliaz)
+            else
+              raise Razor::ValidationFailure.new("cannot supply both #{real_attribute} and #{alias_name}")
+            end
+          else
+            data[alias_name]
+          end
+      data.delete(alias_name)
+    end
+    data
+  end
+
   def to_json(arg)
     @attributes.to_json
   end
@@ -199,6 +296,7 @@ at https://tickets.puppetlabs.com/
 
   def attr(name, checks = {})
     name.is_a?(String) or raise ArgumentError, "attribute name must be a string"
+    # Add '-' alias(es) if applicable.
     @attributes[name] = Razor::Validation::HashAttribute.new(name, checks)
   end
 

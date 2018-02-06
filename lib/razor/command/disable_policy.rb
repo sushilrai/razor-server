@@ -9,16 +9,26 @@ stop installing if that was triggered by matching this policy prior to the
 disable command.
   EOT
 
-  example <<-EOT
+  example api: <<-EOT
 Disable a policy:
 
     {"name": "example"}
   EOT
 
+  example cli: <<-EOT
+Disable a policy:
+
+    razor disable-policy --name example
+
+With positional arguments, this can be shortened::
+
+    razor disable-policy example
+  EOT
+
 
   authz '%{name}'
   attr  'name', type: String, required: true, references: Razor::Data::Policy,
-                help: _('The name of the policy to disable.')
+                position: 0, help: _('The name of the policy to disable.')
 
   def run(request, data)
     policy = Razor::Data::Policy[:name => data['name']]

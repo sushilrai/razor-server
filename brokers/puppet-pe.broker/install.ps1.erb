@@ -1,0 +1,40 @@
+# -*- powershell -*-
+write-host "Razor Windows broker script starting"
+$ErrorActionPreference = "Continue"
+$error.clear()
+
+if ((Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty OSArchitecture) -match '64') {
+    $arch = 'x64'
+} else {
+    $arch = 'x86'
+}
+$master = "<%= (broker[:server] || 'puppet') %>"
+$version = "<%= (broker[:version] || 'current') %>"
+$installer = "https://${master}:8140/packages/${version}/install.ps1"
+
+write-host "downloading PS1 file to install PE agent from $installer"
+$installer_dest = "${ENV:TEMP}\puppet-install.ps1"
+[Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+(New-Object System.Net.WebClient).DownloadFile($installer, $installer_dest)
+if($error.Count) {
+    write-host "failed to download puppet agent installer: $error"
+    $error_url = "<%= log_url('failed to download puppet agent installer', :error) %>"
+    (new-object System.Net.WebClient).DownloadString($error_url)
+    Exit 1
+}
+
+write-host "starting PE installer at $installer_dest"
+$installer_args = @('-File', ${installer_dest})
+Start-Process -File "powershell.exe" -Args $installer_args -Passthru | Wait-Process
+if($error.Count) {
+    write-host "failed to run puppet agent installer: $error"
+    $error_url = "<%= log_url('failed to run puppet agent installer', :error) %>"
+    (New-Object System.Net.WebClient).DownloadString($error_url)
+    Exit 1
+}
+
+write-host "notify Razor that the broker completed"
+(New-Object System.Net.WebClient).DownloadString('<%= stage_done_url %>')
+if($error.Count) {
+    write-host 'failed to tell Razor that the broker completed'
+}

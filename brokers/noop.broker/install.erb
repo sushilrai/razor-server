@@ -1,0 +1,17 @@
+#! /bin/bash
+set -u
+set -e
+
+# Some utility functions.
+fail() { echo >&2 "$@"; exit 1; }
+warn() { echo >&2 "$@"; }
+cmd()  { hash "$1" >&/dev/null; } # portable 'which'
+
+# Log that the broker is finished.
+if cmd curl; then
+    curl -sL "<%= stage_done_url %>" || fail "curl failed to log broker completion"
+elif cmd wget; then
+    wget -qO- "<%= stage_done_url %>" || fail "wget failed to log broker completion" &> /dev/null
+else
+    warn "neither curl nor wget installed; cannot log completion of broker"
+fi

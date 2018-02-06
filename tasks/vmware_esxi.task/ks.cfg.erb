@@ -1,8 +1,9 @@
 # Thanks to William Lam for being the guru
 accepteula
 rootpw --iscrypted <%=
-  if node.root_password =~ /^\$\d+\$[^$]*\$/
-    node.root_password
+  root_password = node.metadata['root_password'] || node.root_password
+  if root_password =~ /^\$\d+\$[^$]*\$/
+    root_password
   else
     require 'asm/cipher'
     require 'unix_crypt'
@@ -153,6 +154,8 @@ done
 echo "Pre execution done"
 
 
+
+
 %firstboot --interpreter=busybox
 
 # The following sleep is a workaround for this:
@@ -163,9 +166,8 @@ echo "Pre execution done"
 # seen cases where it is not
 
 sleep 300
-
 # set the hostname correctly before we do anythig else
-esxcli system hostname set --fqdn <%= node.hostname %>
+esxcli system hostname set --fqdn <%= node.metadata['hostname'] || node.hostname %>
 
 # enable HV (Hardware Virtualization to run nested 64bit Guests + Hyper-V VM)
 grep -i 'vhv.allow' /etc/vmware/config || echo 'vhv.allow = 'TRUE'' >> /etc/vmware/config
@@ -205,7 +207,6 @@ ntp_server="<%=
     (options['ntp_server'] || '').strip.size > 0 ? options['ntp_server'] : ""
 
 %>"
-
 ### NTP CONFIGURATIONS ###
 if [ "$ntp_server" != "" ]; then
 cat > /etc/ntp.conf << __NTP_CONFIG__
@@ -245,7 +246,11 @@ done
 # backup ESXi configuration to persist changes
 /sbin/auto-backup.sh
 
+# enter maintenance mode
+#vim-cmd hostsvc/maintenance_mode_enter
+
 # copy %first boot script logs to persisted datastore
 cp /var/log/hostd.log "/vmfs/volumes/$(hostname -s)-local-storage-1/firstboot-hostd.log"
 cp /var/log/esxi_install.log "/vmfs/volumes/$(hostname -s)-local-storage-1/firstboot-esxi_install.log"
+wget <%= stage_done_url("finished") %>
 reboot

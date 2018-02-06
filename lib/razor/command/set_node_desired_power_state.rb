@@ -9,7 +9,7 @@ node is observed to be in a different power state an IPMI command will be
 issued to change to the desired state.
   EOT
 
-  example <<-EOT
+  example api: <<-EOT
 Setting the power state for the node:
 
     {
@@ -18,12 +18,24 @@ Setting the power state for the node:
     }
   EOT
 
+  example cli: <<-EOT
+Setting the power state for the node:
+
+    razor set-node-desired-power-state --name node1234 \\
+        --to on|off|null
+
+With positional arguments, this can be shortened::
+
+    razor set-node-desired-power-state node1234 off
+  EOT
+
   authz '%{name}'
   attr  'name', type: String, required: true,  references: Razor::Data::Node,
-                help: _('The node to change the desired power state of.')
+                position: 0,
+                help: _('The node for which to change the desired power state.')
 
   attr 'to', type: String, required: false, one_of: ['on', 'off', nil],
-             help: _('The desired power state -- on, or off.')
+             position: 1, help: _('The desired power state -- on, or off.')
 
   def run(request, data)
     node = Razor::Data::Node[:name => data['name']]

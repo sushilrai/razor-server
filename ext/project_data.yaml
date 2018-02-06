@@ -24,23 +24,28 @@ update_version_file: true
 # files and gem_files are space separated lists (or arrays)
 files:
   - ext/razor-server.init.erb
+  - ext/redhat/razor-server.service
+  - ext/redhat/razor-server.env
+  - ext/redhat/razor-server-tmpfiles.conf
   - 'Gemfile*'
   - .bundle
   - config.ru
   - app.rb
-  - torquebox.rb
   - bin
-  - lib
+  - brokers
   - db
+  - doc
+  - lib
   - config.yaml.sample
+  - hooks
   - shiro.ini
   - jars
-  - build-winpe
-  - brokers
-  - doc
-  - tasks
-  - vendor
-  - '*.md'
   - LICENSE
+  - '*.md'
+  - build-winpe
+  - Rakefile
+  - tasks
+  - torquebox.rb
+  - vendor
   - 'locales/*.po'
   - 'locales/*.pot'

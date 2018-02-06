@@ -19,9 +19,9 @@ desired installed state, will be present in the database, regardless of it
 existing before hand or not.
   EOT
 
-  example <<-EOT
+  example api: <<-EOT
 Register a machine before you boot it, and note that it already has an OS
-installed, so should not be subject to policy based reinstallation:
+installed, so should not be subject to policy-based reinstallation:
 
     {
       "hw_info": {
@@ -37,6 +37,19 @@ installed, so should not be subject to policy based reinstallation:
 
   EOT
 
+  example cli: <<-EOT
+Register a machine before you boot it, and note that it already has an OS
+installed, so should not be subject to policy-based reinstallation:
+
+    razor register-node --hw-info net0=78:31:c1:be:c8:00 \\
+        --hw-info net1=72:00:01:f2:13:f0 \\
+        --hw-info net2=72:00:01:f2:13:f1 \\
+        --hw-info serial=xxxxxxxxxxx \\
+        --hw-info asset=Asset-1234567890 \\
+        --hw-info uuid="Not Settable" \\
+        --installed
+  EOT
+
   authz  true
 
   attr   'installed', type: :bool, required: true, help: _(<<-HELP)
@@ -44,7 +57,7 @@ installed, so should not be subject to policy based reinstallation:
     not eligible for policy matching, and will simply boot locally.
   HELP
 
-  object 'hw-info', required: true, size: 1..Float::INFINITY, help: _(<<-HELP) do
+  object 'hw_info', required: true, size: 1..Float::INFINITY, help: _(<<-HELP) do
     The hardware information for the node.  This is used to match the node on first
     boot with the record in the database.  The order of MAC address assignment in
     this data is not significant, as a node with reordered MAC addresses will be
@@ -59,13 +72,10 @@ installed, so should not be subject to policy based reinstallation:
 
 
   def run(request, data)
-    Razor::Data::Node.lookup(data['hw-info']).set(installed: data['installed']).save
-  end
-
-  def self.conform!(data)
-    data.tap { |_|
-      data['hw-info'] = data.delete('hw_info') if data.has_key?('hw_info')
-    }
+    Razor::Data::Node.lookup(data['hw_info']).set(installed: data['installed']).save.
+        tap do |node|
+      Razor::Data::Hook.trigger('node-registered', node: node)
+    end
   end
 end
 

@@ -9,7 +9,7 @@ If `force` is true, the tag will be removed from all policies that use it
 before being deleted.
   EOT
 
-  example <<-EOT
+  example api: <<-EOT
 Delete a tag, but only if it is not used:
 
     {"name": "example"}
@@ -20,17 +20,31 @@ Delete a tag regardless of it being used:
     {"name": "example", "force": true}
   EOT
 
+  example cli: <<-EOT
+Delete a tag, but only if it is not used:
+
+    razor delete-tag --name example
+    razor delete-tag --name example --force false
+
+Delete a tag regardless of it being used:
+
+    razor delete-tag --name example --force
+
+With positional arguments, this can be shortened::
+
+    razor delete-tag example --force
+  EOT
 
   authz '%{name}'
   attr  'name', type: String, required: true, size: 1..Float::INFINITY,
-                help: _('The name of the tag to delete.')
+                position: 0, help: _('The name of the tag to delete.')
 
   attr 'force', type: :bool, help: _(<<-HELP)
     If the tag is already in use, by default it will not be deleted.
 
     To make that work, the force option can be supplied, which will cause the
     tag to be removed from all nodes it is applied to and all policies which
-    reference it before being deleted as a single, atomic action
+    reference it before being deleted as a single, atomic action.
   HELP
 
   def run(request, data)

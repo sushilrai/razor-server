@@ -5,6 +5,18 @@ require 'uri'
 require 'fcntl'
 require 'archive'
 
+# This is a monkey-patch to fix an issue on Ubuntu. The `lchmod` command is not
+# implemented on every distro, so FileUtils performs `lchmod 0`, which is
+# supposed to determine whether `lchmod` is available. However, on Ubuntu, this
+# returns 0 rather than the NotImplementedException, meaning a runtime error
+# occurs when the real `lchmod <value>, <filename>` gets called. This patch
+# avoids the lchmod shenanigans altogether.
+class FileUtils::Entry_
+  def have_lchmod?
+    false
+  end
+end
+
 # Manage our unpacked OS repos on disk.  This is a relatively stateful class,
 # because it is a proxy for data physically stored outside our database.
 #
@@ -23,6 +35,7 @@ module Razor::Data
     # typically through the constructor.  Only enforced at the Ruby layer, but
     # since we direct everything through the model that is acceptable.
     set_allowed_columns :name, :iso_url, :url, :task_name
+    one_to_many :events
 
     # Create a new repo and kick off the background import of its ISO (if
     # there is one) The +command+ is used to track progress of the import
@@ -30,6 +43,13 @@ module Razor::Data
     def self.import(data, command)
       super.tap do |repo, new|
         new and repo.publish('make_the_repo_accessible', command)
+      end
+    end
+
+    def remove_directory(dir)
+      if Dir.exist?(dir)
+        FileUtils.chmod_R('+w', dir, force: true)
+        FileUtils.remove_entry_secure(dir)
       end
     end
 
@@ -44,8 +64,10 @@ module Razor::Data
       self.tmpdir and FileUtils.remove_entry_secure(self.tmpdir, true)
 
       # Remove repo directory.
-      if Dir.exist?(iso_location)
-        FileUtils.remove_entry_secure(iso_location, true)
+      if self.iso_url
+        # Some files in archives are write-only. Change this property so the
+        # delete succeeds.
+        remove_directory(iso_location)
       end
     end
 
@@ -53,8 +75,6 @@ module Razor::Data
       super
       if url and iso_url
         errors.add(:urls, _("only one of the 'url' and 'iso_url' attributes can be set at the same time"))
-      elsif url.nil? and iso_url.nil?
-        errors.add(:urls, _("you must set one of the 'url' or 'iso_url' attributes"))
       end
     end
 
@@ -69,12 +89,18 @@ module Razor::Data
     # @warning this should not be called inside a transaction.
     def make_the_repo_accessible(command)
       command.store('running')
-      url = URI.parse(iso_url)
-      if url.scheme.downcase == 'file'
-        File.readable?(url.path) or raise _("unable to read local file %{path}") % {path: url.path}
-        publish 'unpack_repo', command, url.path
+      if iso_url.nil?
+        # This is done to create a stub directory to manually install the repo.
+        # This also happens for remote repositories.
+        publish 'unpack_repo', command, nil
       else
-        publish 'unpack_repo', command, download_file_to_tempdir(url)
+        url = URI.parse(iso_url)
+        if url.scheme.downcase == 'file'
+          File.readable?(url.path) or raise _("unable to read local file %{path}") % {path: url.path}
+          publish 'unpack_repo', command, url.path
+        else
+          publish 'unpack_repo', command, download_file_to_tempdir(url)
+        end
       end
     end
 
@@ -170,8 +196,9 @@ module Razor::Data
     # done, notify ourselves of that so any cleanup required can be performed.
     def unpack_repo(command, path)
       destination = iso_location
+      remove_directory(iso_location)
       destination.mkpath        # in case it didn't already exist
-      Archive.extract(path, destination)
+      Archive.extract(path, destination) if path
       self.publish('release_temporary_repo', command)
     end
 

@@ -1,4 +1,0 @@
----
-os_version: Windows_Server_2008_R2_SERVERENTERPRISECORE
-description: Microsoft Windows 2008 R2 Enterprise Core
-base: windows2008

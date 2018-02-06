@@ -27,14 +27,25 @@ This is not integrated with the IPMI power state monitoring, and you may not
 see power transitions in the record, or through the node object if polling.
   EOT
 
-  example <<-EOT
-Queue a node reboot: `{"name": "node1"}`
+  example api: <<-EOT
+Queue a node reboot:
+
+    {"name": "node1"}
   EOT
 
+  example cli: <<-EOT
+Queue a node reboot:
+
+    razor reboot-node --name node1
+
+With positional arguments, this can be shortened::
+
+    razor reboot-node node1
+  EOT
 
   authz '%{name}'
   attr  'name', type: String, required: true, references: Razor::Data::Node,
-                help: _('The name of the node to reboot.')
+                position: 0, help: _('The name of the node to reboot.')
 
   def run(request, data)
     node = Razor::Data::Node[:name => data['name']]

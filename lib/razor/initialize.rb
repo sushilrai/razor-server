@@ -8,7 +8,7 @@ require_relative 'config'
 require 'monitor'
 
 require 'java'
-require_relative '../../jars/shiro-core-1.2.2.jar'
+require_relative '../../jars/shiro-core-1.2.3.jar'
 require_relative '../../jars/commons-beanutils-1.8.3.jar'
 
 # Load Sequel extensions
@@ -82,10 +82,6 @@ module Razor
   # Establish a database connection now and load extensions
   Razor.database
   Razor.database.extension :pg_array
-
-  # ASM local patch to work around ASM-3272 and RAZOR-70
-  Razor.database.extension :connection_validator
-  Razor.database.pool.connection_validation_timeout = 10
 
   # Ensure the migration extension is available, now that we use it as part of
   # each request to ensure that we catch missed migrations correctly.

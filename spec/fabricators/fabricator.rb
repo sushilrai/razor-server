@@ -25,6 +25,18 @@ Fabricator(:broker, :class_name => Razor::Data::Broker) do
   end
 end
 
+Fabricator(:broker_with_configuration, :from => :broker) do
+  broker_type do
+    path = Pathname(__FILE__).dirname + '..' + 'fixtures' + 'brokers' + 'with_configuration.broker'
+    Razor::BrokerType.new(path)
+  end
+  configuration do
+    {'key-with-default' => 'original',
+     'required-key' => 'other-original',
+     'optional-key' => 'a value'}
+  end
+end
+
 Fabricator(:broker_with_policy, from: :broker) do
   after_build do |broker, _|
     policy = Fabricate(:policy)
@@ -46,7 +58,7 @@ Fabricator(:task, :class_name => Razor::Data::Task) do
   os            { Faker::Commerce.product_name }
   os_version    { random_version }
   description   { Faker::Lorem.sentence }
-  boot_seq      {{'default' => 'boot_local'}}
+  boot_seq      {{1 => 'boot_first', 'default' => 'boot_local'}}
 end
 
 Fabricator(:tag, :class_name => Razor::Data::Tag) do
@@ -103,11 +115,11 @@ Fabricator(:bound_node, from: :node) do
     data = {}
     20.times do
       data[Faker::Lorem.word] = case Random.rand(4)
-                                when 0 then Faker::Lorem.word
-                                when 1 then Random.rand(2**34).to_s
-                                when 2 then random_version
-                                when 3 then 'true'
-                                else raise "unexpected random number!"
+                                  when 0 then Faker::Lorem.word
+                                  when 1 then Random.rand(2**34).to_s
+                                  when 2 then random_version
+                                  when 3 then 'true'
+                                  else raise "unexpected random number!"
                                 end
     end
     data
@@ -119,11 +131,11 @@ Fabricator(:bound_node, from: :node) do
     data["ip"] = Faker::Internet.ip_v4_address if Random.rand(4) == 3
     20.times do
       data[Faker::Lorem.word] = case Random.rand(4)
-                                when 0 then Faker::Lorem.word
-                                when 1 then Random.rand(2**34).to_s
-                                when 2 then random_version
-                                when 3 then 'true'
-                                else raise "unexpected random number!"
+                                  when 0 then Faker::Lorem.word
+                                  when 1 then Random.rand(2**34).to_s
+                                  when 2 then random_version
+                                  when 3 then 'true'
+                                  else raise "unexpected random number!"
                                 end
     end
     data
@@ -152,4 +164,41 @@ end
 Fabricator(:command) do
   command 'do-something'
   status  'pending'
+end
+
+Fabricator(:hook, :class_name => Razor::Data::Hook) do
+  name      { Faker::Commerce.product_name + " #{Fabricate.sequence}" }
+  # This is fixed, because we need something on disk to back it!
+  hook_type do
+    path = Pathname(__FILE__).dirname + '..' + 'fixtures' + 'hooks' + 'test.hook'
+    Razor::HookType.new(path)
+  end
+end
+
+Fabricator(:hook_with_configuration, :from => :hook) do
+  hook_type do
+    path = Pathname(__FILE__).dirname + '..' + 'fixtures' + 'hooks' + 'with_configuration.hook'
+    Razor::HookType.new(path)
+  end
+  configuration do
+    {'key-with-default' => 'original',
+     'required-key' => 'other-original',
+     'optional-key' => 'a value'}
+  end
+end
+
+Fabricator(:counter_hook, :from => :hook) do
+  hook_type do
+    path = Pathname(__FILE__).dirname + '..' + 'fixtures' + 'hooks' + 'counter.hook'
+    Razor::HookType.new(path)
+  end
+end
+
+Fabricator(:event, :class_name => Razor::Data::Event) do
+  entry do
+    {msg: Faker::Commerce.product_name}
+  end
+  # hook_id { Fabricate(:hook).id }
+  node_id { Fabricate(:bound_node).id }
+  policy_id { Fabricate(:policy).id }
 end
