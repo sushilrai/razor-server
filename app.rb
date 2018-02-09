@@ -1,11 +1,15 @@
 # -*- encoding: utf-8 -*-
 require 'sinatra'
+require 'gettext-setup'
+require 'open-uri'
 
 require_relative './lib/razor/initialize'
 require_relative './lib/razor'
 
 class Razor::App < Sinatra::Base
   extend Razor::Validation
+
+  GettextSetup.initialize(File.absolute_path('locales', File.dirname(__FILE__)))
 
   configure do
     # FIXME: This turns off template caching all together since I am not
@@ -55,6 +59,10 @@ and requires full control over the database (eg: add and remove tables):
     content_type 'application/json'
   end
 
+  before do
+    FastGettext.locale = GettextSetup.negotiate_locale(env["HTTP_ACCEPT_LANGUAGE"])
+  end
+
   before %r'/api($|/)'i do
     # Ensure that we can happily talk application/json with the client.
     # At least this way we tell you when we are going to be mean.
@@ -64,6 +72,10 @@ and requires full control over the database (eg: add and remove tables):
     # --daniel 2013-06-26
     request.preferred_type('application/json') or
       halt [406, {"error" => _("only application/json content is available")}.to_json]
+
+    if Razor.config['secure_api']
+      request.secure? or halt [404, {"error" => _("API requests must be over SSL (secure_api config property is enabled)")}.to_json]
+    end
   end
 
   #
@@ -78,13 +90,21 @@ and requires full control over the database (eg: add and remove tables):
       org.apache.shiro.SecurityUtils.subject
     end
 
+    # Check if request is from localhost and if bypass for localhost is enabled
+    def local_request?
+      request.ip == '127.0.0.1' and Razor.config['auth.allow_localhost']
+    end
+
     # Assert that the current user has (all of) the specified permissions, and
     # raise an exception if they do not.  We handle that exception generically
     # at the top level.
     #
     # If security is disabled then this simply succeeds.
+    #
+    # If auth.allow_localhost is set, requests from a local razor client are allowed without
+    # authentication.
     def check_permissions!(*which)
-      Razor.config['auth.enabled'] and user.check_permissions(*which)
+      Razor.config['auth.enabled'] and not local_request? and user.check_permissions(*which)
       true
     end
 
@@ -94,7 +114,11 @@ and requires full control over the database (eg: add and remove tables):
 
     def json_body
       if request.content_type =~ %r'application/json'i
-        return JSON.parse(request.body.read)
+        # Slightly malformed JSON will read here as a string, so we should catch
+        # that case and report unparseable JSON.
+        JSON.parse(request.body.read).tap do |result|
+          raise ArgumentError unless result.is_a?(Hash) || result.is_a?(Array)
+        end
       else
         error 415, :error => _("only application/json is accepted here")
       end
@@ -142,8 +166,9 @@ and requires full control over the database (eg: add and remove tables):
       url "/svc/store_metadata/#{@node.id}?#{q}"
     end
 
-    def broker_install_url
-      url "/svc/broker/#{@node.id}/install"
+    def broker_install_url(script = nil)
+      args = "?script=#{script}" unless script.nil?
+      url "/svc/broker/#{@node.id}/install#{args}"
     end
 
     def node_url
@@ -168,15 +193,55 @@ and requires full control over the database (eg: add and remove tables):
       URI::parse(repo_url(path))
     end
 
-    def repo_file(path = "")
-      root = File.expand_path(@repo.name, Razor.config['repo_store_root'])
-      if path.empty?
-        root
+    # Checks for the existence of a file in the repo; returns `nil` if absent,
+    # otherwise either a string path to the file or a URI to the file.
+    def repo_file?(path = '')
+      if @repo.url
+        uri = repo_uri(path)
+        logger.info("repo_file?(#{uri})")
+        open(uri) && uri rescue nil
       else
-        logger.info("repo_file(#{path.inspect})")
-        Razor::Data::Repo.find_file_ignoring_case(root, path)
+        logger.warn("`repo_file` is deprecated; use `repo_file_contents` or `repo_file?`")
+        root = File.expand_path(@repo.name, Razor.config['repo_store_root'])
+        if path.empty?
+          root
+        else
+          logger.info("repo_file?(#{path.inspect})")
+          Razor::Data::Repo.find_file_ignoring_case(root, path)
+        end
       end
     end
+
+    # Deprecated: Only kept in case a user is relying on this function for
+    # custom tasks.
+    def repo_file(path = '')
+      logger.warn("repo_file is deprecated; use `repo_file_contents` or `repo_file?`")
+      if @repo.url
+        # This preserves past behavior, where an empty string would be returned.
+        # The `repo_file?` method below would return a URL.
+        ''
+      else
+        repo_file?(path)
+      end
+    end
+
+    def repo_file_contents(path = '')
+      if @repo.url
+        uri = repo_uri(path)
+        logger.info("repo_file_contents(#{uri})")
+        open(uri).read rescue ''
+      else
+        root = File.expand_path(@repo.name, Razor.config['repo_store_root'])
+        if path.empty?
+          root
+        else
+          logger.info("repo_file_contents(#{path.inspect})")
+          file = Razor::Data::Repo.find_file_ignoring_case(root, path)
+          File.read(file) rescue ''
+        end
+      end
+    end
+
 
     # @todo lutter 2013-08-21: all the tasks need to be adapted to do a
     # 'curl <%= stage_done_url %> to signal that they are ready to proceed to
@@ -199,8 +264,15 @@ and requires full control over the database (eg: add and remove tables):
         vars[net_id] = "${#{net_id}/mac:hexhyp}"
       end
       ["dhcp_mac", "serial", "asset", "uuid"].each { |k| vars[k] = "${#{k}}" }
+      vars['fact_boot_type'] = "${platform}"
       q = vars.map { |k,v| "#{k}=#{v}" }.join("&")
-      url "/svc/boot?#{q}"
+      # Sinatra's URL generation is not robust, meaning changes need to happen
+      # as string substitutions.
+      (url "/svc/boot?#{q}").
+           sub(/\Ahttps:/, 'http:').
+           # The port may be either absent or present; make the paths converge
+           sub(/\/\/#{request.host_with_port}/, "//#{request.host}").
+           sub(/http:\/\/#{request.host}/, "http://#{request.host}:#{@bootstrap_port}")
     end
 
     # Information to include on the microkernel kernel command line that
@@ -332,17 +404,12 @@ and requires full control over the database (eg: add and remove tables):
   get '/svc/nodeid' do
     return 400 if params.empty?
     begin
-      nodes, hw_info = Razor::Data::Node.find_by_hw_info(params)
-      if nodes.size > 1
-        # We have more than one node matching hw_info; fail
-        raise Razor::Data::DuplicateNodeError.new(hw_info, nodes)
-      elsif nodes.size == 0
+      if node = Razor::Data::Node.lookup(params)
+        logger.info("/svc/nodeid: #{params.inspect} mapped to #{node.id}")
+        { :id => node.id }.to_json
+      else
         logger.info("/svc/nodeid: #{params.inspect} not found")
         404
-      else
-        node = nodes.first
-        logger.info("/svc/nodeid: #{params.inspect} mapped to #{node.id}")
-        {:id => node.id}.to_json
       end
     rescue Razor::Data::DuplicateNodeError => e
       logger.info("/svc/nodeid: #{params.inspect} multiple nodes")
@@ -365,9 +432,12 @@ and requires full control over the database (eg: add and remove tables):
     end
 
     @task = @node.task
+    template = @task.boot_template(@node)
 
     if @node.policy
       @repo = @node.policy.repo
+      @node.log_append(:event => :boot, :task => @task.name,
+                       :template => template, :repo => @repo.name)
     else
       # @todo lutter 2013-08-19: We have no policy on the node, and will
       # therefore boot into the MK. This is a gigantic hack; all we need is
@@ -380,12 +450,12 @@ and requires full control over the database (eg: add and remove tables):
       @repo = Razor::Data::Repo.new(:name => "microkernel",
                                     :iso_url => "file:///dev/null",
                                     :task_name => @task.name)
-    end
-    template = @task.boot_template(@node)
 
-    @node.log_append(:event => :boot, :task => @task.name,
-                     :template => template, :repo => @repo.name)
+      @node.log_append(:event => :boot, :task => @task.name,
+                       :template => template)
+    end
     @node.save
+    Razor::Data::Hook.trigger('node-booted', node: @node)
     render_template(template)
   end
 
@@ -402,10 +472,20 @@ and requires full control over the database (eg: add and remove tables):
     @task = @node.task
     @repo = @node.policy.repo
 
+    begin
+      fpath = @task.find_file(params[:filename])
+    rescue Razor::TemplateNotFoundError => e
+      @node.log_append(:event => :get_raw_file,
+                       :msg => _("raw task file %{script} not found") % {script: params[:filename]},
+                       :severity => 'error', :url => request.url)
+      raise e
+    end
+
+    unless fpath
+    end
     @node.log_append(:event => :get_raw_file, :template => params[:filename],
                      :url => request.url)
 
-    fpath = @task.find_file(params[:filename]) or halt 404
     content_type nil
     send_file fpath, :disposition => nil
   end
@@ -420,30 +500,59 @@ and requires full control over the database (eg: add and remove tables):
     @task = @node.task
     @repo = @node.policy.repo
 
-    @node.log_append(:event => :get_file, :template => params[:template],
-                     :url => request.url)
-
-    render_template(params[:template])
+    begin
+      render_template(params[:template]).tap do |_|
+          @node.log_append(:event => :get_task_file, :template => params[:template],
+                           :url => request.url)
+      end
+    rescue Razor::TemplateNotFoundError => e
+      @node.log_append(:event => :get_task_file, :script => params[:template],
+                       :msg => _("task file %{script} not found") % {script: params[:template]},
+                       :severity => 'error', :url => request.url)
+      raise e
+    end
   end
 
-  # If we support more than just the `install` script in brokers, this should
-  # expand to take the template identifier like the file service does.
+  # This accepts a `script` parameter, which defaults to `install` for the file `install.erb`.
   get '/svc/broker/:node_id/install' do
-    node = Razor::Data::Node[params[:node_id]]
-    halt 404 unless node
-    halt 409 unless node.policy
+    @node = Razor::Data::Node[params[:node_id]]
+    halt 404 unless @node
+    error 409, :error => _("node %{node} not bound to a policy yet") % {node: @node.id} unless @node.policy
 
     content_type 'text/plain'   # @todo danielp 2013-09-24: ...or?
-    node.policy.broker.install_script_for(node)
+    script_name = params['script'] || 'install'
+    begin
+      # The stage_done_url needs to be generated in Sinatra, so we calculate it here and pass it on.
+      stage_done_url = stage_done_url('broker')
+      @node.policy.broker.install_script_for(@node, script_name,
+                                            'stage_done_url' => stage_done_url,
+                                            'log_url' => (url("/svc/log/#{@node.id}"))).tap do |_|
+        @node.log_append(:event => :get_broker_file,
+                         :script => script_name, :url => request.url)
+      end
+    rescue Razor::InstallTemplateNotFoundError => e
+      @node.log_append(:event => :get_broker_file,
+                       :msg => _("broker install file %{script} not found") % {script: script_name},
+                       :severity => 'error', :url => request.url)
+      error 404, :error => _("install template %{name}.erb does not exist") % {name: script_name},
+            :details => e.to_s
+    end
   end
 
   get '/svc/log/:node_id' do
-    node = Razor::Data::Node[params[:node_id]]
-    halt 404 unless node
-
-    node.log_append(:event => :node_log,
-                    :msg=> params[:msg], :severity => params[:severity])
-    node.save
+    node = Razor::Data::Node[params[:node_id]] if params[:node_id]
+    unless node
+      Razor::Data::Event.log_append(:event => :log_to_node,
+                     :msg => _("node %{node} not found to log") % {node: params[:node_id]},
+                     :severity => 'error', :original_msg => params[:msg])
+      error 404, :error => _("node %{node}.erb does not exist") % {node: params[:node_id]}
+    end
+    entry = {:msg => params[:msg]}
+    entry = JSON::parse(entry.to_json)
+    event = Razor::Data::Event.new({:entry => entry})
+    event.severity = params[:severity] || 'info'
+    event.node = node
+    event.save
     [204, {}]
   end
 
@@ -479,10 +588,24 @@ and requires full control over the database (eg: add and remove tables):
     # hit trouble.  So, to make this more user friendly we look for a
     # case-insensitive match on the file.
     fpath = Razor::Data::Repo.find_file_ignoring_case(root, path)
+    if fpath.nil? && path == 'razor-winpe.wim'
+      # These are odd cases; Windows 2012r2 and 2016 require the winpe file to
+      # be called `boot.wim`. Our old tasks used `razor-winpe.wim` instead.
+      # For backwards compatibility, we should also look for razor-winpe.wim in
+      # this case. This checks both, in case the user copied our task.
+      fpath = Razor::Data::Repo.find_file_ignoring_case(root, 'boot.wim')
+    elsif fpath.nil? and path == 'boot.wim'
+      fpath = Razor::Data::Repo.find_file_ignoring_case(root, 'razor-winpe.wim')
+    end
+
     if fpath and fpath.start_with?(root) and File.file?(fpath)
       content_type nil
       send_file fpath, :disposition => nil
     else
+      # This method is called so many times that we only want to report errors.
+      Razor::Data::Event.log_append(:event => :get_file,
+          :msg => _("repo file %{path} not found") % {path: path}, :severity => 'error',
+          :url => request.url)
       [404, { :error => _("File %{path} not found") % {path: path} }.to_json ]
     end
   end
@@ -506,7 +629,9 @@ and requires full control over the database (eg: add and remove tables):
   #
   # @todo danielp 2013-06-26: this should be some sort of discovery, not a
   # hand-coded list, but ... it will do, for now.
-  COLLECTIONS = [:brokers, :repos, :tags, :policies, :nodes, :tasks, :commands]
+  COLLECTIONS = [:brokers, :repos, :tags, :policies,
+                 [:nodes, {'start' => {"type" => "number"}, 'limit' => {"type" => "number"}}], :tasks, :commands,
+                 [:events, {'start' => {"type" => "number"}, 'limit' => {"type" => "number"}}], :hooks, :config]
 
   #
   # The main entry point for the public/management API
@@ -528,8 +653,10 @@ and requires full control over the database (eg: add and remove tables):
     {
       "commands" => Razor::Command.all.map(&:to_command_list_hash).map {|c| c.dup.update("id" => url(c["id"])) },
       "collections" => COLLECTIONS.map do |coll|
+        coll, params = coll if coll.is_a?(Array)
         { "name" => coll, "rel" => spec_url("/collections/#{coll}"),
-          "id" => url("/api/collections/#{coll}")}
+          "id" => url("/api/collections/#{coll}"),
+          "params" => params }.delete_if { |_, v| v.nil? }
       end,
       "version" => { "server" => Razor::VERSION }
     }.to_json
@@ -651,8 +778,48 @@ and requires full control over the database (eg: add and remove tables):
     command_hash(cmd).to_json
   end
 
+  get '/api/collections/events' do
+    check_permissions!("query:events")
+
+    # Need to also order by ID here in case the granularity of timestamp is
+    # not enough to maintain a consistent ordering.
+    cursor = Razor::Data::Event.order(:timestamp).order(:id).reverse
+    collection_view cursor, 'events', limit: params[:limit], start: params[:start]
+  end
+
+  get '/api/collections/events/:id' do
+    params[:id] =~ /[0-9]+/ or error 400, :error => _("id must be a number but was %{id}") % {id: params[:id]}
+    check_permissions!("query:events:#{params[:id]}")
+    event = Razor::Data::Event[:id => params[:id]] or
+        error 404, :error => _("no event matched id=%{id}") % {id: params[:id]}
+    event_hash(event).to_json
+  end
+
+  get '/api/collections/hooks' do
+    check_permissions!("query:hooks")
+
+    collection_view Razor::Data::Hook, 'hooks'
+  end
+
+  get '/api/collections/hooks/:name' do
+    check_permissions!("query:hooks:#{params[:name]}")
+    hook = Razor::Data::Hook[:name => params[:name]] or
+        error 404, :error => _("no hook matched name=%{name}") % {name: params[:name]}
+    hook_hash(hook).to_json
+  end
+
+  get '/api/collections/hooks/:name/log' do
+    check_permissions!("query:hooks:#{params[:name]}")
+    hook = Razor::Data::Hook[:name => params[:name]] or
+        error 404, :error => _("no hook matched name=%{name}") % {name: params[:name]}
+    {
+        "spec" => spec_url("collections", "hooks", "log"),
+        "items" => hook.log(limit: params[:limit], start: params[:start])
+    }.to_json
+  end
+
   get '/api/collections/nodes' do
-    collection_view Razor::Data::Node.search(params), 'nodes'
+    collection_view Razor::Data::Node.search(params).order(:id), 'nodes', limit: params[:limit], start: params[:start]
   end
 
   get '/api/collections/nodes/:name' do
@@ -668,9 +835,28 @@ and requires full control over the database (eg: add and remove tables):
     # @todo lutter 2013-08-20: Do we need to send the log through a view ?
     node = Razor::Data::Node[:name => params[:name]] or
       error 404, :error => _("no node matched hw_id=%{hw_id}") % {hw_id: params[:hw_id]}
+    # This is not a standard collection in that each item is not just a
+    # reference, instead containing relevant details to make the `/log`
+    # view worthwhile without extra querying.
     {
       "spec" => spec_url("collections", "nodes", "log"),
-      "items" => node.log
+      "items" => node.log(limit: params[:limit], start: params[:start])
+    }.to_json
+  end
+
+  get '/api/collections/config' do
+    blacklist = Razor.config['api_config_blacklist'] || []
+    items = Razor.config.flat_values.reject do |k, _|
+      blacklist.include? k
+    end
+    {
+        "spec" => spec_url("collections", "config"),
+        "items" => items.map do |k,v|
+          {
+            "name" => k,
+            "value" => v
+          }
+        end,
     }.to_json
   end
 
@@ -681,11 +867,38 @@ and requires full control over the database (eg: add and remove tables):
       error 400,
         :error => _("The nic_max parameter must be an integer not starting with 0")
 
+    is_nil = params["http_port"].nil?
+    is_in_range = (params["http_port"] =~ /\A[1-9][0-9]{0,4}\Z/ and
+        params['http_port'].to_i < 65536)
+    is_nil or is_in_range or error 400,
+        :error => _('The http_port parameter must be an integer between 1 and 65535')
+
+    @bootstrap_port = params['http_port']
+    @bootstrap_port ||= ENV['RAZOR_HTTP_PORT']
+    # Can't use current port if this request is secure.
+    @bootstrap_port ||= request.port.to_s unless request.secure?
+    @bootstrap_port ||= 8150
+
     # How many NICs ipxe should probe for DHCP
     @nic_max = params["nic_max"].nil? ? 4 : params["nic_max"].to_i
 
     @task = Razor::Task.mk_task
 
     render_template("bootstrap")
+  end
+
+  get '/api/collections/message-queue' do
+    Hash[TorqueBox::Messaging::Queue.list.map do |queue|
+      [queue.name, {'count' => queue.count_messages}]
+    end].to_json
+  end
+
+  post '/api/commands/dequeue-message-queues' do
+    # Remove these by name so we only get our queues.
+    Hash[['/queues/razor/sequel-instance-messages', '/queues/razor/sequel-hooks-messages'].map do |queue_name|
+      queue = TorqueBox.fetch(queue_name)
+      count = queue.remove_messages
+      [queue.name, count > 0 ? "removed #{count} messages" : "no changes"]
+    end].to_json
   end
 end

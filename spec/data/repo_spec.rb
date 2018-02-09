@@ -238,10 +238,6 @@ describe Razor::Data::Repo do
         Fabricate(:repo, :url => 'http://example.org/', :iso_url => 'http://example.com')
       end.to raise_error(Sequel::ValidationFailed)
     end
-
-    it "should require setting one of them" do
-      repo = Fabricate.build(:repo).set(:url => nil, :iso_url => nil).should_not be_valid
-    end
   end
 
   context "task" do
@@ -298,6 +294,20 @@ describe Razor::Data::Repo do
            'command'   => { :id => command.id },
            'message'   => 'unpack_repo',
            'arguments' => [path]
+        ).on(queue)
+      end
+
+      it "should publish 'unpack_repo' with nil path if no url or iso_url" do
+        repo.iso_url = nil
+        repo.url = nil
+        expect {
+          repo.make_the_repo_accessible(command)
+        }.to have_published(
+           'class'     => repo.class.name,
+           'instance'  => repo.pk_hash,
+           'command'   => { :id => command.id },
+           'message'   => 'unpack_repo',
+           'arguments' => [nil]
         ).on(queue)
       end
 
@@ -427,6 +437,7 @@ describe Razor::Data::Repo do
         repo = Fabricate.build(:repo)
         repo.unpack_repo(command, tiny_iso)
         unpacked_iso_dir = File::join(repo_dir, repo.name)
+        FileUtils.chmod_R('-w', unpacked_iso_dir, force: true)
         Dir.exist?(unpacked_iso_dir).should be_true
         repo.save
         repo.destroy
@@ -434,6 +445,31 @@ describe Razor::Data::Repo do
       ensure
         # Cleanup
         repo_dir and FileUtils.remove_entry_secure(repo_dir)
+      end
+    end
+
+    it "should keep repo's manually created directory" do
+      command = Fabricate(:command)
+
+      begin
+        repo_root = Dir.mktmpdir('test-razor-repo-dir')
+        Razor.config.stub(:[]).with('repo_store_root').and_return(repo_root)
+        repo = Fabricate(:repo, :iso_url => nil)
+        repo_dir = File::join(repo_root, repo.name)
+        file = repo_dir + "some-file"
+        # Simulating no-content argument to create-repo
+        repo.unpack_repo(command, nil)
+        Dir.exist?(repo_dir).should be_true
+        File.open(file, 'w') { |f| f.write('precious text') }
+        File.exist?(file).should be_true
+        repo.save
+        repo.destroy
+        Dir.exist?(repo_dir).should be_true
+        File.exist?(file).should be_true
+        File.read(file).should == 'precious text'
+      ensure
+        # Cleanup
+        repo_root and FileUtils.remove_entry_secure(repo_root)
       end
     end
 
@@ -534,6 +570,19 @@ describe Razor::Data::Repo do
       end
     end
 
+    it "should work if the repo dir is already present" do
+      Dir.mktmpdir do |root|
+        root = Pathname(root)
+        Razor.config['repo_store_root'] = root
+        repo_dir = Pathname(root) + repo.name
+        repo_dir.mkdir
+        file = repo_dir + 'some-undeletable-file'
+        file.open('w'){|f| f.print 'cant delete this' }
+        FileUtils.chmod('-w', file)
+        repo.unpack_repo(command, tiny_iso)
+      end
+    end
+
     it "should unpack the repo into the filesystem_safe_name under root" do
       Dir.mktmpdir do |root|
         root = Pathname(root)
@@ -572,6 +621,20 @@ describe Razor::Data::Repo do
         'command'   => { :id => command.id },
         'message'  => 'release_temporary_repo'
       ).on(queue)
+    end
+
+    it "should create folder with nil path for no-content" do
+      Dir.mktmpdir do |tmpdir|
+        root = Pathname(tmpdir) + 'repo-store'
+        Razor.config['repo_store_root'] = root.to_s
+
+        root.should_not exist
+
+        repo.unpack_repo(command, nil)
+
+        root.should exist
+        (root + repo.name).should exist
+      end
     end
   end
 

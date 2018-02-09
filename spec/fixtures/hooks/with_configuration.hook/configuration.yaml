@@ -1,0 +1,13 @@
+---
+key-with-default:
+  description: "Some variable with a default."
+  default: 1
+required-key:
+  description: "Some required variable."
+  required: true
+optional-key:
+  description: "Some optional variable."
+optional-key-with-default:
+  description: "Some optional variable with a default."
+  required: false
+  default: 1

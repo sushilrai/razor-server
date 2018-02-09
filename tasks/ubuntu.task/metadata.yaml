@@ -1,8 +1,7 @@
 ---
 
-os_version: precise
-architecture: amd64
-label: Ubuntu Precice 12.04
+os_version: xenial
+label: Ubuntu Xenial 16.04
 description: Ubuntu Generic Installer
 boot_sequence:
   1: boot_install

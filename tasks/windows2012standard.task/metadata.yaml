@@ -1,4 +1,0 @@
----
-os_version: Windows_Server_2012_SERVERSTANDARD
-description: Microsoft Windows 2012 Standard
-base: windows2012

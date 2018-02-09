@@ -53,14 +53,14 @@ if (-not (test-administrator)) {
 You must be running as administrator for this script to function.
 Unfortunately, we can't reasonable elevate privileges ourselves
 so you need to launch an administrator mode command shell and then
-re-run this script yourself.  
+re-run this script yourself.
 "@
     exit 1
 }
 
 if(!$finalisoname) {
     $finalisoname = 'asmwindows.iso'
-} 
+}
 
 if(-not (check-validisoname $finalisoname)) {
     write-host 'Error: Final iso name entered ' $finalisoname ' is not a valid iso name.'
@@ -90,7 +90,7 @@ Mount-DiskImage -ImagePath $userisoloc -Verbose
 
 #Find drive letter for mounted .iso
 $ciminstance = Get-DiskImage -ImagePath $userisoloc
-$info = Get-Volume -DiskImage $ciminstance 
+$info = Get-Volume -DiskImage $ciminstance
 $driveletter = $info.DriveLetter
 $isodirectory = $driveletter + ":\*"
 Write-Host 'Iso mounted at: ' $driveletter ' and iso directory is: ' $isodirectory
@@ -260,8 +260,8 @@ $string69 | Out-File $razorclientloc -Append
 
 ########################################################################
 # Some "constants" that might have to change to accommodate different
-# versions of the WinPE building tools.  
-# Default install root for the ADK; 
+# versions of the WinPE building tools.
+# Default install root for the ADK;
 $adk = @([Environment]::GetFolderPath('ProgramFilesX86'),
          [Environment]::GetFolderPath('ProgramFiles')) |
            % { join-path $_ 'Windows Kits\8.0\Assessment and Deployment Kit\Windows Preinstallation Environment\amd64' } |
@@ -335,7 +335,7 @@ write-host "Adding powershell, and dependencies, to the image"
 write-host "*******************************************************"
 write-host ""
 # This order is documented in http://technet.microsoft.com/library/hh824926.aspx
-# You cant change it safely. Also cab files differ between 8.0 and 8.1 so we 
+# You cant change it safely. Also cab files differ between 8.0 and 8.1 so we
 # need to choose depending on the ADK version
 if($adkversion -eq 8.1) {
 @('WinPE-WMI', 'WinPE-NetFX', 'WinPE-Scripting', 'WinPE-PowerShell') | foreach {
@@ -345,12 +345,12 @@ if($adkversion -eq 8.1) {
     add-windowspackage -packagepath $pkg -path $mount
     $pkg = join-path $packages "en-us\${item}_en-us.cab"
     add-windowspackage -packagepath $pkg -path $mount
-    
+
 }
 # Copy bootmgr.exe to root of winpe.wim, this is fix for ADK 8.1 & iPXE
 # not supporting compression
 #copy-item
-  
+
     $bootmgrsource = Join-Path $mount "Windows\Boot\PXE\bootmgr.exe"
     if(Test-path $bootmgrsource) {
         Copy-Item $bootmgrsource $mount
@@ -459,7 +459,7 @@ write-host "*******************************************************"
             Add-WindowsDriver -Path $mount -Driver "$drivers" -Recurse
 #unmount boot.wim
             dismount-windowsimage -save -path $mount -erroraction stop
-            Write-Host "unmounted $wim image $image" 
+            Write-Host "unmounted $wim image $image"
         }
     } else {
         Write-Host "no installwim source"
@@ -488,7 +488,7 @@ $arg3 = '-o'
 $arg4 = '-u2'
 $arg5 = '-udfver102'
 $arg6 = '-l<Windows>'
-$arg7 = '-bootdata:2#p0,e,b"' + $windowsdirectory + '\boot\ETFSBOOT.COM"#pEF,e,b"' + $windowsdirectory + '\efi\microsoft\boot\efisys.bin"' 
+$arg7 = '-bootdata:2#p0,e,b"' + $windowsdirectory + '\boot\ETFSBOOT.COM"#pEF,e,b"' + $windowsdirectory + '\efi\microsoft\boot\efisys.bin"'
 Write-Host "*************************"
 Write-Host "Calling OSCDCMD: " + $oscdimgloc
 & $oscdimgloc $arg1 $arg2 $arg3 $arg4 $arg5 $arg6 $arg7 $windowsdirectory $newisodirectory
@@ -499,20 +499,20 @@ Remove-Item $output -recurse
 Remove-Item $mount -recurse
 Remove-Item $razorclientloc
 $Files = Get-ChildItem $windowsdirectory -Recurse
-ForEach ($File in $Files) 
+ForEach ($File in $Files)
 {
       if ($File.IsReadOnly -eq $true )
       {
-          try  
+          try
           {
-               Set-ItemProperty -path $File.FullName -name IsReadOnly -value $false 
+               Set-ItemProperty -path $File.FullName -name IsReadOnly -value $false
           }
-          catch [Exception] 
-          { 
-               Write-Host "Error at file " $Path "\" $File 
+          catch [Exception]
+          {
+               Write-Host "Error at file " $Path "\" $File
                Write-Host $_.Exception.Message
           }
-      } 
+      }
 }
 Remove-Item $windowsdirectory -Recurse
 $bootwimloc = $cwd + '\boot.wim'
@@ -526,5 +526,5 @@ Dismount-DiskImage -ImagePath $userisoloc
 
 
 
-           
+
 

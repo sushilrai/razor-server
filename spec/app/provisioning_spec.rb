@@ -23,6 +23,12 @@ describe "provisioning API" do
     assert_booting("Microkernel")
   end
 
+  it "should store all hw_info" do
+    get "/svc/boot?net0=00:11:22:33:44:55&serial=12345&asset=54321"
+    Razor::Data::Node.all.first.hw_info.should ==
+        ['asset=54321', 'mac=00-11-22-33-44-55', 'serial=12345']
+  end
+
   it "should log an error if more than one node matches the hw_info" do
     n1 = Fabricate(:node, :hw_info => ["serial=s1", "asset=a1"])
     n2 = Fabricate(:node, :hw_info => ["serial=s2", "asset=a1"])
@@ -74,8 +80,7 @@ describe "provisioning API" do
           "severity" => "info",
           "event" => "boot",
           "task" => "microkernel",
-          "template" => "boot",
-          "repo" => "microkernel"
+          "template" => "boot"
         }
       end
 
@@ -117,7 +122,6 @@ describe "provisioning API" do
         entry.delete("timestamp").should_not be_nil
         entry.should == {
           "severity" => "info",
-          "repo" => "microkernel",
           "event" => "boot",
           "task" => "noop",
           "template" => "boot_local"
@@ -288,24 +292,6 @@ describe "provisioning API" do
     it "should return 404 for nonexistent template" do
       get "/svc/file/#{@node.id}/no_such_template_exists"
       last_response.status.should == 404
-    end
-  end
-
-  describe "logging" do
-    it "should return 404 logging against nonexisting node" do
-      get "/svc/log/432?msg=message&severity=warn"
-      last_response.status.should == 404
-    end
-
-    it "should store the log message for an existing node" do
-      node = Fabricate(:node)
-
-      get "/svc/log/#{node.id}?msg=message&severity=warn"
-      last_response.status.should == 204
-      log = Node[node.id].log
-      log.size.should == 1
-      log[0]["msg"].should == "message"
-      log[0]["severity"].should == "warn"
     end
   end
 
@@ -532,8 +518,6 @@ describe "provisioning API" do
         node.registered?.should be_true
         node.installed.should == installed
         node.policy.should be_nil
-        # Checkin will not try to evaluate tags on installed nodes
-        node.tags.should be_empty
       end
     end
   end

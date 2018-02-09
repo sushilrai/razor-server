@@ -16,6 +16,26 @@ Sequel.migration do
 
     alter_table(:policies) { set_column_allow_null :task_name }
 
+    # If only one task exists for the repo (via policy), assign it to repo and remove it from policy.
+    from(:policies).
+        join(:repos, :id => :repo_id).
+        select_group(:repos__id).
+        having("count(*) = 1").
+        each do |repo|
+          task_name = from(:policies).select(:task_name).where(:repo_id => repo[:id])
+          from(:repos).where(id: repo[:id]).update(:task_name => task_name)
+          from(:policies).where(repo_id: repo[:id]).update(:task_name => nil)
+        end
+
+    # Warning if using repo's task 'noop' + override on policy.
+    from(:policies).
+        join(:repos, :id => :repo_id).
+        select_group(:repos__id).
+        having("count(*) > 1").
+        each do |repo|
+          repo_name = from(:repos).select(:name).where(:id => repo[:id]).single_value
+          puts _("Warning: Multiple policies found for repo #{repo_name}; unable to control task from repo")
+        end
     # ASM specific: all repos with policies using tasks starting with windows2012
     # or windows2008 should be migrated to windows2012 or windows2012 tasks.
     %w(windows2008 windows2012).each do |task_name|

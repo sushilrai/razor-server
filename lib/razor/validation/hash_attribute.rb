@@ -4,6 +4,7 @@ class Razor::Validation::HashAttribute
     case name
     when String
       name =~ /\A[-_a-z0-9]+\z/ or raise ArgumentError, "attribute name is not valid"
+      @aliases = (name =~ /_/) ? [name.gsub('_', '-')] : []
     when Regexp
       # no additional validation at this stage, but we should add some!
     else
@@ -18,6 +19,8 @@ class Razor::Validation::HashAttribute
       send(check, argument)
     end
   end
+
+  attr_accessor :aliases
 
   def finalize(schema)
     Array(@exclude).each do |attr|
@@ -38,9 +41,11 @@ class Razor::Validation::HashAttribute
 
   # Documentation generation for the attribute.
   HelpTemplate = ERB.new(_(<<-ERB), nil, '%')
-- <%= @help %>
+% if @help
+- <%= @help.gsub("\n", "\n  ") %>
+% end
 % if @required
-- This attribute is required
+- This attribute is required.
 % end
 % if @type
 - It must be of type <%= ruby_type_to_json(@type[:type]) %>.
@@ -57,22 +62,20 @@ class Razor::Validation::HashAttribute
 % if @size
 - It must be between <%= @size.min %> and <%= @size.max %> in length.
 % end
+% if @position
+- Its argument position is <%= @position %>.
+% end
 % if @nested_schema
-<%= @nested_schema %>
+<%= @nested_schema.help %>
 % end
   ERB
 
-  def to_s
-    # We indent so that nested attributes do the right thing.
-    HelpTemplate.result(binding).gsub(/^/, '   ')
-  end
-
   def to_json(arg)
-    if @type.nil?
-      {}.to_json
-    else
-      {'type' => ruby_type_to_json(@type[:type])}.to_json
-    end
+      {'type' => @type.nil? ? nil : ruby_type_to_json(@type[:type]),
+       # This alerts clients so they can apply their validation/mutation.
+       'aliases' => @aliases,
+       'position' => @position}.
+          delete_if { |_, v| v.nil? || v == [] }.to_json
   end
 
   def expand(path, name)
@@ -149,7 +152,7 @@ class Razor::Validation::HashAttribute
           msg = n_(
             '%{this} must be at most %{max} characters in length, but is actually %{size} character long',
             '%{this} must be at most %{max} characters in length, but is actually %{size} characters long',
-            zalue.size)
+            value.size)
         end
 
       else
@@ -177,8 +180,6 @@ class Razor::Validation::HashAttribute
   end
 
   def type(which)
-    which.nil? and raise ArgumentError, "type checks must be passed some type to check"
-
     @type = case which
       when nil    then {type: NilClass}
       when :bool  then {type: [TrueClass, FalseClass]}
@@ -193,6 +194,21 @@ class Razor::Validation::HashAttribute
       else
         raise ArgumentError, "type checks must be passed a class, module, or nil (got #{which.inspect})"
       end
+  end
+
+  def alias(what)
+    @aliases =
+        case what
+        when String, Array then
+          array = Array(what)
+          array.each do |match|
+            match.is_a?(String) or
+                raise ArgumentError, "alias must be a string or array of strings (got #{match.inspect} in array)"
+          end
+          array
+        else
+          raise ArgumentError, "alias must be a string or array of strings (got #{what.inspect})"
+        end
   end
 
   def exclude(what)
@@ -253,8 +269,26 @@ class Razor::Validation::HashAttribute
     @size = range
   end
 
-  def help(text)
-    @help = Razor::Help.scrub(text) or
-      raise ArgumentError, "the attribute summary must be a string"
+  def help(text = nil)
+    if text.nil?
+      # We indent so that nested attributes do the right thing.
+      HelpTemplate.result(binding).gsub(/^/, '   ').rstrip
+    else
+      @help = Razor::Help.scrub(text) or
+        raise ArgumentError, "the attribute summary must be a string"
+    end
+  end
+
+  # Override is necessary here since method declarations take priority over
+  # `attr_accessor` and the name `position` is used for both.
+  def position(pos = nil)
+    if pos.nil?
+      @position
+    else
+      unless pos.is_a?(Integer) and pos >= 0
+        raise ArgumentError, "position must be an integer greater than or equal to 0"
+      end
+      @position = pos
+    end
   end
 end

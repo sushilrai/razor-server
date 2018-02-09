@@ -13,45 +13,48 @@ describe "command and query API" do
     authorize 'fred', 'dead'
   end
 
+  def validate!(schema, json)
+    # Why does the validate method insist it should be able to modify
+    # my schema?  That would be, y'know, bad.
+    JSON::Validator.validate!(schema.dup, json, :validate_schema => true)
+  end
+
   # JSON schema for collections where we only send back object references;
   # these are the same no matter what the underlying collection elements
   # look like
   ObjectRefCollectionSchema = {
     '$schema'  => 'http://json-schema.org/draft-04/schema#',
-    'title'    => "Broker Collection JSON Schema",
+    'title'    => "Object Reference Collection JSON Schema",
     'type'     => 'object',
     'additionalProperties' => false,
     'properties' => {
       "spec" => {
-        '$schema' => 'http://json-schema.org/draft-04/schema#',
         'type'    => 'string',
         'pattern' => '^https?://'
       },
       "items" => {
-        '$schema' => 'http://json-schema.org/draft-04/schema#',
         'type'    => 'array',
         'items'    => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
           'type'     => 'object',
           'additionalProperties' => false,
           'properties' => {
             "spec" => {
-              '$schema' => 'http://json-schema.org/draft-04/schema#',
               'type'    => 'string',
               'pattern' => '^https?://'
             },
             "id" => {
-              '$schema' => 'http://json-schema.org/draft-04/schema#',
               'type'    => 'string',
               'pattern' => '^https?://'
             },
             "name" => {
-              '$schema' => 'http://json-schema.org/draft-04/schema#',
               'type'    => 'string',
               'pattern' => '^[^\n]+$'
             }
           }
         }
+      },
+      'total' => {
+          'type'     => 'number'
       }
     }
   }.freeze
@@ -113,6 +116,109 @@ describe "command and query API" do
       data["collections"].all? do |row|
         get row["id"]
         last_response.status.should == 200
+      end
+    end
+
+    describe "securing /api" do
+      it "should allow secure when secure_api is true" do
+        Razor.config['secure_api'] = true
+        get "/api", {}, 'HTTPS' => 'on'
+        last_response.status.should == 200
+      end
+      it "should allow secure when secure_api is false" do
+        Razor.config['secure_api'] = false
+        get "/api", {}, 'HTTPS' => 'on'
+        last_response.status.should == 200
+      end
+      it "should disallow insecure when secure_api is true" do
+        Razor.config['secure_api'] = true
+        get "/api", {}, 'HTTPS' => 'off'
+        last_response.status.should == 404
+        last_response.json['error'].should == 'API requests must be over SSL (secure_api config property is enabled)'
+      end
+      it "should allow insecure when secure_api is false" do
+        Razor.config['secure_api'] = false
+        get "/api", {}, 'HTTPS' => 'off'
+        last_response.status.should == 200
+      end
+    end
+  end
+
+  context "/api/commands/*" do
+    CommandSchema = {
+      '$schema'  => 'http://json-schema.org/draft-04/schema#',
+      'title'    => "Command JSON Schema",
+      'type'     => 'object',
+      'additionalProperties' => false,
+      'required' => %w[name help schema],
+      'properties' => {
+        "name" => {
+          'type'    => 'string',
+          'pattern' => '^[^\n]+$'
+        },
+        "help" => {
+          'type'    => 'object',
+          'additionalProperties' => false,
+          'required' => %w[summary description schema examples full],
+          'properties' => {
+            'summary' => {
+              'type'    => 'string',
+              'pattern' => '^[^\n]+$'
+            },
+            'description' => {
+              'type'    => 'string'
+            },
+            'schema' => {
+              'type'    => 'string'
+            },
+            'examples' => {
+              'type'    => 'object',
+              'additionalProperties' => false,
+              'required' => %w[api cli],
+              'properties' => {
+                  'api' => {
+                      'type' => 'string'
+                  },
+                  'cli' => {
+                      'type' => 'string'
+                  }
+              }
+            },
+            'full' => {
+              'type'    => 'string'
+            }
+          }
+        },
+        "schema" => {
+          'type'    => 'object',
+          'additionalProperties' => {
+            'type' => 'object',
+            'minLength' => 1,
+            'additionalProperties' => false,
+            'properties' => {
+              'type' => {
+                'type' => 'string',
+                'pattern' => '^[^\n]+$'
+              },
+              'aliases' => {
+                'type' => 'array'
+              },
+              'position' => {
+                'type' => 'integer',
+                'minimum' => 0
+              }
+            }
+          }
+        }
+      }
+    }.freeze
+
+    it "should include the correct command schema" do
+      get '/api'
+      data = last_response.json
+      data["commands"].all? do |row|
+        get row['id']
+        validate! CommandSchema, last_response.body
       end
     end
   end
@@ -280,7 +386,6 @@ describe "command and query API" do
           'pattern'  => '^[a-zA-Z0-9_/]+$'
         },
         'base'     => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
           'title'    => "Object Reference Schema",
           'type'     => 'object',
           'required' => %w[spec id name],
@@ -325,12 +430,6 @@ describe "command and query API" do
       },
       'additionalProperties' => false,
     }.freeze
-
-    def validate!(schema, json)
-      # Why does the validate method insist it should be able to modify
-      # my schema?  That would be, y'know, bad.
-      JSON::Validator.validate!(schema.dup, json, :validate_schema => true)
-    end
 
     before(:each) do
       use_task_fixtures
@@ -379,62 +478,50 @@ describe "command and query API" do
       '$schema'  => 'http://json-schema.org/draft-04/schema#',
       'title'    => "Broker Collection JSON Schema",
       'type'     => 'object',
-      'required' => %w[spec id name configuration broker-type],
+      'required' => %w[spec id name configuration broker_type],
       'properties' => {
         'spec' => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
           'type'     => 'string',
           'pattern'  => '^https?://'
         },
         'id'       => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
           'type'     => 'string',
           'pattern'  => '^https?://'
         },
         'name'     => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
           'type'     => 'string',
           'pattern'  => '^[a-zA-Z0-9 ]+$'
         },
-        'broker-type' => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
+        'broker_type' => {
           'type'     => 'string',
           'pattern'  => '^[a-zA-Z0-9 ]+$'
         },
         'configuration' => {
-          '$schema' => 'http://json-schema.org/draft-04/schema#',
           'type'    => 'object',
           'additionalProperties' => {
-            '$schema'   => 'http://json-schema.org/draft-04/schema#',
             'oneOf'     => [
               {
-                '$schema' => 'http://json-schema.org/draft-04/schema#',
                 'type'      => 'string',
                 'minLength' => 1
               },
               {
-                '$schema' => 'http://json-schema.org/draft-04/schema#',
                 'type'      => 'number',
               }
             ]
           }
         },
         'policies'     => {
-          '$schema' => 'http://json-schema.org/draft-04/schema#',
           'type'    => 'object',
           'required' => %w[id count name],
           'properties' => {
             'id'   => {
-              '$schema'  => 'http://json-schema.org/draft-04/schema#',
               'type'     => 'string',
               'pattern'  => '^https?://'
             },
             'count'     => {
-              '$schema'  => 'http://json-schema.org/draft-04/schema#',
               'type'     => 'integer'
             },
             'name'     => {
-              '$schema'  => 'http://json-schema.org/draft-04/schema#',
               'type'     => 'string',
               'pattern'  => '^[a-zA-Z0-9 ]+$'
             }
@@ -443,12 +530,6 @@ describe "command and query API" do
       },
       'additionalProperties' => false,
     }.freeze
-
-    def validate!(schema, json)
-      # Why does the validate method insist it should be able to modify
-      # my schema?  That would be, y'know, bad.
-      JSON::Validator.validate!(schema.dup, json, :validate_schema => true)
-    end
 
     shared_examples "a broker collection" do |expected|
       before :each do
@@ -512,65 +593,53 @@ describe "command and query API" do
       'required' => %w[spec id name],
       'properties' => {
         'spec' => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
           'type'     => 'string',
           'pattern'  => '^https?://'
         },
         'id'       => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
           'type'     => 'string',
           'pattern'  => '^https?://'
         },
         'name'     => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
           'type'     => 'string',
           'pattern'  => '^node[0-9]+$'
         },
         'hw_info'    => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
           'type'     => 'object'
         },
         'dhcp_mac' => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
           'type'     => 'string',
           'pattern'  => '^[0-9a-fA-F]+$'
         },
         'log'   => {
-          '$schema'    => 'http://json-schema.org/draft-04/schema#',
           'type'       => 'object',
           'required'   => %w[id name],
           'properties' => {
             'id'       => {
-              '$schema'  => 'http://json-schema.org/draft-04/schema#',
               'type'     => 'string',
               'pattern'  => '^https?://'
             },
             'name'     => {
-              '$schema'   => 'http://json-schema.org/draft-04/schema#',
               'type'      => 'string',
               'minLength' => 1
             },
           },
         },
         'tags'     => {
-          '$schema'    => 'http://json-schema.org/draft-04/schema#',
           'type'       => 'array',
           'items'      => {
             'type'       => 'object',
             'required'   => %w[id name spec],
             'properties'  => {
               'id'       => {
-                '$schema'  => 'http://json-schema.org/draft-04/schema#',
                 'type'     => 'string',
                 'pattern'  => '^https?://'
               },
               'name'     => {
-                '$schema'   => 'http://json-schema.org/draft-04/schema#',
                 'type'      => 'string',
                 'minLength' => 1
               },
               'spec' => {
-                '$schema'  => 'http://json-schema.org/draft-04/schema#',
                 'type'     => 'string',
                 'pattern'  => '^https?://'
               },
@@ -578,22 +647,18 @@ describe "command and query API" do
           },
         },
         'policy'   => {
-          '$schema'    => 'http://json-schema.org/draft-04/schema#',
           'type'       => 'object',
           'required'   => %w[spec id name],
           'properties' => {
             'spec' => {
-              '$schema'  => 'http://json-schema.org/draft-04/schema#',
               'type'     => 'string',
               'pattern'  => '^https?://'
             },
             'id'       => {
-              '$schema'  => 'http://json-schema.org/draft-04/schema#',
               'type'     => 'string',
               'pattern'  => '^https?://'
             },
             'name'     => {
-              '$schema'   => 'http://json-schema.org/draft-04/schema#',
               'type'      => 'string',
               'minLength' => 1
             },
@@ -601,80 +666,65 @@ describe "command and query API" do
           'additionalProperties' => false,
         },
         'facts' => {
-          '$schema'       => 'http://json-schema.org/draft-04/schema#',
           'type'          => 'object',
           'minProperties' => 1,
           'additionalProperties' => {
-            '$schema'   => 'http://json-schema.org/draft-04/schema#',
             'type'      => 'string',
             'minLength' => 0
           }
         },
         'metadata' => {
-          '$schema'       => 'http://json-schema.org/draft-04/schema#',
           'type'          => 'object',
           'minProperties' => 0,
           'additionalProperties' => {
-            '$schema'   => 'http://json-schema.org/draft-04/schema#',
             'type'      => 'string',
             'minLength' => 0
           }
         },
         'state' => {
-          '$schema'       => 'http://json-schema.org/draft-04/schema#',
           'type'          => 'object',
           'minProperties' => 0,
           'properties'    => {
             'installed' => {
-              '$schema'  => 'http://json-schema.org/draft-04/schema#',
               'type'     => ['string', 'boolean'],
             }
           },
           'additionalProperties' => {
-            '$schema'   => 'http://json-schema.org/draft-04/schema#',
             'type'      => 'string',
             'minLength' => 0
           }
         },
         'hostname' => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
           'type'     => 'string',
         },
         'root_password' => {
-          '$schema'  => 'http://json-schema.org/draft-04/schema#',
           'type'     => 'string',
         },
         'power' => {
-          '$schema'    => 'http://json-schema.org/draft-04/schema#',
           'type'       => 'object',
           'properties' => {
             'desired_power_state' => {
-              '$schema'  => 'http://json-schema.org/draft-04/schema#',
               'type'     => ['string', 'null'],
               'pattern'  => 'on|off'
             },
             'last_known_power_state' => {
-              '$schema'  => 'http://json-schema.org/draft-04/schema#',
               'type'     => ['string', 'null'],
               'pattern'  => 'on|off'
             },
             'last_power_state_update_at' => {
-              '$schema'  => 'http://json-schema.org/draft-04/schema#',
               'type'     => ['string', 'null'],
               # 'pattern' => '' ...date field.
             }
           },
           'additionalProperties' => false,
+        },
+        'ipmi' => {
+            'hostname' => nil,
+            'username' => nil
         }
       },
       'additionalProperties' => false,
     }.freeze
-
-    def validate!(schema, json)
-      # Why does the validate method insist it should be able to modify
-      # my schema?  That would be, y'know, bad.
-      JSON::Validator.validate!(schema.dup, json, :validate_schema => true)
-    end
 
     shared_examples "a node collection" do |expected|
       before :each do
@@ -728,6 +778,36 @@ describe "command and query API" do
 
       it_should_behave_like "a node collection", 10
     end
+
+    it "should state that 'start' and 'limit' are valid parameters" do
+      get '/api'
+      params = last_response.json['collections'].select {|c| c['name'] == 'nodes'}.first['params']
+      params.should == {'start' => {"type" => "number"}, 'limit' => {"type" => "number"}}
+    end
+
+    context "limiting" do
+      let :names do [] end
+      before :each do
+        5.times { names.push(Fabricate(:node).name) }
+        # Verify that the array of names matches what's on the server.
+        get "/api/collections/nodes"
+        last_response.json['error'].should be_nil
+        last_response.status.should == 200
+        last_response.json['items'].map {|e| e['name']}.should == names
+      end
+      it "should show limited nodes" do
+        get "/api/collections/nodes?limit=2"
+        last_response.status.should == 200
+
+        last_response.json['items'].map {|e| e['name']}.should == names[0..1]
+      end
+      it "should show limited nodes with offset" do
+        get "/api/collections/nodes?limit=2&start=2"
+        last_response.status.should == 200
+
+        last_response.json['items'].map {|e| e['name']}.should == names[2..3]
+      end
+    end
   end
 
   context "/api/collections/nodes/:name" do
@@ -757,6 +837,90 @@ describe "command and query API" do
 
       last_response.json.should have_key 'state'
       last_response.json['state'].should include 'installed' => false
+    end
+
+    it "should include node log params" do
+      get "/api/collections/nodes/#{node.name}"
+      last_response.status.should == 200
+
+      last_response.json.should have_key 'log'
+      last_response.json['log'].should include 'params' => {'limit' => {'type' => 'number'}, 'start' => {'type' => 'number'}}
+    end
+  end
+
+  context "/api/collections/nodes/:name/log" do
+    let :node do Fabricate(:node) end
+    let :msgs do [] end
+    before :each do
+      5.times { msgs.unshift(Fabricate(:event, node: node).entry[:msg]) }
+    end
+    it "should show log" do
+      get "/api/collections/nodes/#{node.name}/log"
+      last_response.status.should == 200
+
+      last_response.json['items'].map {|e| e['msg']}.should == msgs
+    end
+    it "should show limited log" do
+      get "/api/collections/nodes/#{node.name}/log?limit=2"
+      last_response.status.should == 200
+
+      last_response.json['items'].map {|e| e['msg']}.should == msgs[0..1]
+    end
+    it "should show limited log with offset" do
+      get "/api/collections/nodes/#{node.name}/log?limit=2&start=2"
+      last_response.status.should == 200
+
+      last_response.json['items'].map {|e| e['msg']}.should == msgs[2..3]
+    end
+  end
+  context "/api/collections/config" do
+    ConfigCollectionSchema = {
+        '$schema'  => 'http://json-schema.org/draft-04/schema#',
+        'title'    => "Config Collection JSON Schema",
+        'type'     => 'object',
+        'additionalProperties' => false,
+        'properties' => {
+            "spec" => {
+                'type'    => 'string',
+                'pattern' => '^https?://'
+            },
+            "items" => {
+                'type'    => 'array',
+                'items'    => {
+                    'type'     => 'object',
+                    'additionalProperties' => true,
+                }
+            }
+        }
+    }.freeze
+
+    it "should return the config" do
+      Razor.config['api_config_blacklist'] = ['database_url', 'facts.blacklist']
+      get '/api/collections/config'
+      last_response.status.should == 200
+      validate! ConfigCollectionSchema, last_response.body
+
+      items = last_response.json['items']
+      count = Razor.config.flat_values.length - Razor.config['api_config_blacklist'].length
+      items.length.should == count
+
+      items.each do |item|
+        Razor.config[item['name']].should == item['value']
+      end
+
+      Razor.config['api_config_blacklist'].each do |k,_|
+        items.map { |item| item['name'] }.should_not include k
+      end
+    end
+
+    it "should succeed without a config set" do
+      Razor.config['api_config_blacklist'] = nil
+      get '/api/collections/config'
+      last_response.status.should == 200
+
+      items = last_response.json['items']
+      items.length.should == Razor.config.flat_values.length
+      items.length.should > 0 # Just in case
     end
   end
 
@@ -818,12 +982,6 @@ describe "command and query API" do
       },
       'additionalProperties' => false,
     }.freeze
-
-    def validate!(schema, json)
-      # Why does the validate method insist it should be able to modify
-      # my schema?  That would be, y'know, bad.
-      JSON::Validator.validate!(schema.dup, json, :validate_schema => true)
-    end
 
     shared_examples "a command collection" do |expected|
       it "should return a valid collection" do
@@ -888,6 +1046,151 @@ describe "command and query API" do
     end
   end
 
+  context "/api/collections/hooks" do
+    before :each do
+      use_hook_fixtures
+    end
+
+    HookItemSchema = {
+      '$schema'  => 'http://json-schema.org/draft-04/schema#',
+      'title'    => "Hook Collection JSON Schema",
+      'type'     => 'object',
+      'required' => %w[spec id name hook_type],
+      'properties' => {
+        'spec' => {
+          'type'     => 'string',
+          'pattern'  => '^https?://'
+        },
+        'id'       => {
+          'type'     => 'string',
+          'pattern'  => '^https?://'
+        },
+        'name'     => {
+          'type'     => 'string',
+          'pattern'  => '^[^\n]+$'
+        },
+        'hook_type' => {
+          'type'     => 'string',
+          'pattern'  => '^[a-zA-Z0-9 ]+$'
+        },
+        'configuration' => {
+          'type'    => 'object',
+          'additionalProperties' => {
+            'oneOf'     => [
+              {
+                'type'      => 'string',
+                'minLength' => 1
+              },
+              {
+                'type'      => 'number',
+              }
+            ]
+          }
+        },
+        'log'   => {
+          'type'       => 'object',
+          'required'   => %w[id name],
+          'properties' => {
+            'id'       => {
+              'type'     => 'string',
+              'pattern'  => '^https?://'
+            },
+            'name'     => {
+              'type'      => 'string',
+              'minLength' => 1
+            },
+          },
+        },
+      },
+      'additionalProperties' => false,
+    }.freeze
+
+    shared_examples "a hook collection" do |expected|
+      it "should return a valid collection" do
+        get "/api/collections/hooks"
+
+        last_response.status.should == 200
+        nodes = last_response.json['items']
+        nodes.should be_an_instance_of Array
+        nodes.count.should == expected
+        validate! ObjectRefCollectionSchema, last_response.body
+      end
+
+      it "should 404 a hook requested that does not exist" do
+        get "/api/collections/hooks/fast%20freddy"
+        last_response.status.should == 404
+      end
+
+      if expected > 0
+        it "should be able to access all hook instances" do
+          Razor::Data::Hook.all.each do |hook|
+            get "/api/collections/hooks/#{URI::escape(hook.name)}"
+            last_response.status.should == 200
+            validate! HookItemSchema, last_response.body
+          end
+        end
+      end
+    end
+
+    context "with none" do
+      it_should_behave_like "a hook collection", 0
+    end
+
+    context "with one" do
+      before :each do
+        Fabricate(:hook)
+      end
+
+      it_should_behave_like "a hook collection", 1
+    end
+
+    context "with ten" do
+      before :each do
+        10.times { Fabricate(:hook) }
+      end
+
+      it_should_behave_like "a hook collection", 10
+    end
+  end
+
+  context "/api/collections/hooks/:name" do
+    let :hook do Fabricate(:hook) end
+
+    it "should include hook log params" do
+      get "/api/collections/hooks/#{URI.escape(hook.name)}"
+      last_response.status.should == 200
+
+      last_response.json.should have_key 'log'
+      last_response.json['log'].should include 'params' => {'limit' => {'type' => 'number'}, 'start' => {'type' => 'number'}}
+    end
+  end
+
+  context "/api/collections/hooks/:name/log" do
+    let :hook do Fabricate(:hook) end
+    let :msgs do [] end
+    before :each do
+      5.times { msgs.unshift(Fabricate(:event, hook: hook).entry[:msg]) }
+    end
+    it "should show log" do
+      get "/api/collections/hooks/#{URI.escape(hook.name)}/log"
+      last_response.status.should == 200
+
+      last_response.json['items'].map {|e| e['msg']}.should == msgs
+    end
+    it "should show limited log" do
+      get "/api/collections/hooks/#{URI.escape(hook.name)}/log?limit=2"
+      last_response.status.should == 200
+
+      last_response.json['items'].map {|e| e['msg']}.should == msgs[0..1]
+    end
+    it "should show limited log with offset" do
+      get "/api/collections/hooks/#{URI.escape(hook.name)}/log?limit=2&start=2"
+      last_response.status.should == 200
+
+      last_response.json['items'].map {|e| e['msg']}.should == msgs[2..3]
+    end
+  end
+
   context "/api/microkernel/bootstrap" do
     it "generates a script for 4 NIC's if nic_max is not given" do
       get "/api/microkernel/bootstrap"
@@ -902,6 +1205,164 @@ describe "command and query API" do
       last_response.status.should == 200
       7.times.each do |i|
         last_response.body.should =~ /^[^#]*dhcp\s+net#{i}/m
+      end
+    end
+
+    it "accepts a http_port parameter" do
+      get "/api/microkernel/bootstrap?http_port=8150"
+      last_response.status.should == 200
+      last_response.body.should =~ /:8150/
+    end
+  end
+
+  context "/api/collections/events" do
+    EventItemSchema = {
+        '$schema'  => 'http://json-schema.org/draft-04/schema#',
+        'title'    => "Event Collection JSON Schema",
+        'type'     => 'object',
+        'required' => %w[spec id name severity entry],
+        'properties' => {
+            'spec' => {
+                'type'     => 'string',
+                'pattern'  => '^https?://'
+            },
+            'id'       => {
+                'type'     => 'string',
+                'pattern'  => '^https?://'
+            },
+            'name'     => {
+                'type'     => 'number',
+                'pattern'  => '^[^\n]+$'
+            },
+            'node' => {
+                'type'     => 'object'
+            },
+            'policy' => {
+                'type'     => 'object'
+            },
+            'timestamp' => {
+                'type'     => 'string'
+                # 'pattern' => '' ...date field.
+            },
+            'entry' => {
+                'type'     => 'object'
+            },
+            'severity' => {
+                'type'     => 'string',
+                'pattern'   => 'error|warning|info',
+            }
+        },
+        'additionalProperties' => false,
+    }.freeze
+
+    it "should 404 a event requested that does not exist" do
+      get "/api/collections/events/238902423"
+      last_response.status.should == 404
+    end
+
+    it "should error on bad-format for event" do
+      get "/api/collections/events/foo"
+      last_response.status.should == 400
+      last_response.json['error'].should =~ /id must be a number but was foo/
+    end
+
+    shared_examples "a event collection" do |expected|
+      it "should return a valid collection" do
+        get "/api/collections/events"
+
+        last_response.status.should == 200
+        nodes = last_response.json['items']
+        nodes.should be_an_instance_of Array
+        nodes.count.should == expected
+        validate! ObjectRefCollectionSchema, last_response.body
+      end
+
+      if expected > 0
+        it "should be able to access all event instances" do
+          Razor::Data::Event.all.each do |event|
+            get "/api/collections/events/#{URI::escape(event.name)}"
+            last_response.status.should == 200
+            validate! EventItemSchema, last_response.body
+          end
+        end
+      end
+    end
+
+    context "with none" do
+      it_should_behave_like "a event collection", 0
+    end
+
+    context "with one" do
+      before :each do
+        Fabricate(:event)
+      end
+
+      it_should_behave_like "a event collection", 1
+    end
+
+    context "with ten" do
+      before :each do
+        10.times { Fabricate(:event) }
+      end
+
+      it_should_behave_like "a event collection", 10
+    end
+
+    context "event limiting" do
+      it "should state that 'start' and 'limit' are valid parameters" do
+        get '/api'
+        params = last_response.json['collections'].select {|c| c['name'] == 'events'}.first['params']
+        params.should == {'start' => {"type" => "number"}, 'limit' => {"type" => "number"}}
+      end
+      it "should view all results by default" do
+        21.times { Fabricate(:event) }
+        get "/api/collections/events"
+
+        last_response.status.should == 200
+        events = last_response.json['items']
+        events.should be_an_instance_of Array
+        events.count.should == 21
+        last_response.json['total'].should == 21
+        validate! ObjectRefCollectionSchema, last_response.body
+      end
+      it "should allow limiting results" do
+        names = []
+        3.times { names << Fabricate(:event).name }
+        get "/api/collections/events?limit=1"
+
+        last_response.status.should == 200
+        events = last_response.json['items']
+        events.should be_an_instance_of Array
+        events.count.should == 1
+        events.first['name'].should == names.last
+        last_response.json['total'].should == 3
+        validate! ObjectRefCollectionSchema, last_response.body
+      end
+      it "should allow windowing of results" do
+        names = []
+        6.times { names.unshift Fabricate(:event).name }
+        get "/api/collections/events?limit=2&start=2"
+
+        last_response.status.should == 200
+        events = last_response.json['items']
+        events.should be_an_instance_of Array
+        events.map {|n| n['name']}.should == names[2..3]
+        events.count.should == 2
+        last_response.json['total'].should == 6
+        validate! ObjectRefCollectionSchema, last_response.body
+      end
+      it "should allow just an offset" do
+        names = []
+        6.times { names.unshift Fabricate(:event).name }
+        get "/api/collections/events?start=2"
+
+        last_response.status.should == 200
+        events = last_response.json['items']
+        events.should be_an_instance_of Array
+        events.map {|n| n['name']}.should == names[2..-1]
+        events.count.should == 4
+        last_response.json['total'].should == 6
+        validate! ObjectRefCollectionSchema, last_response.body
       end
     end
   end

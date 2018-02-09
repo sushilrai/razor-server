@@ -178,6 +178,20 @@ describe Razor::Data::Node do
       n2.hw_info.should == [ "asset=abcd", "mac=00-11-22-33-44-55" ]
     end
 
+    it "should add new hw_info facts to node" do
+      Razor.config['match_nodes_on'] = ['mac']
+
+      hw_hash = { "mac" => ["00-11-22-33-44-55"], "uuid" => "before", "fact_overwrite" => "old" }
+      n1 = Node.lookup(hw_hash)
+      n1.should_not be_nil
+
+      hw_hash = { "net0" => "00-11-22-33-44-55", "uuid" => "not used", "fact_new" => "created", "fact_overwrite" => "new" }
+      n2 = Node.lookup(hw_hash)
+      n2.id.should == n1.id
+      n2.hw_info.should == [ "fact_new=created", "fact_overwrite=new", "mac=00-11-22-33-44-55", "uuid=before" ]
+      n1.reload.hw_info.should == n2.hw_info
+    end
+
     it "should complain if hardware is moved between known nodes" do
       hw1 = { "net0" => "01:01", "net1" => "01:02" }
       hw2 = { "net0" => "02:01" }
@@ -219,11 +233,11 @@ describe Razor::Data::Node do
 
     n = Node[node.id]
     n.log.size.should == 2
-    n.log[0]["msg"].should == "M1"
-    n.log[0]["severity"].should == "info"
+    n.log[0]["msg"].should == "M2"
+    n.log[0]["severity"].should == "error"
     n.log[0]["timestamp"].should_not be_nil
-    n.log[1]["msg"].should == "M2"
-    n.log[1]["severity"].should == "error"
+    n.log[1]["msg"].should == "M1"
+    n.log[1]["severity"].should == "info"
     n.log[1]["timestamp"].should_not be_nil
   end
 
@@ -275,6 +289,35 @@ describe Razor::Data::Node do
     end
   end
 
+  describe "matching on checkin" do
+    hw_id = "001122334455"
+
+    let (:tag) {
+      Tag.create(:name => "t1", :matcher => Razor::Matcher.new(["=", ["fact", "f1"], "a"]))
+    }
+    let (:node) {
+      Node.create(:hw_info => ["mac=#{hw_id}"], :facts => { "f1" => "a" })
+    }
+
+    it "should update tags if the node is marked installed" do
+      node.installed = 'test'
+      node.save
+      node.tags.should == []
+
+      node.match_tags
+      tag.match?(node).should be_true
+
+      node.checkin('facts' => { 'f1' => 'a' })
+      node.reload
+      node.tags.should == [ tag ]
+      node.installed.should == 'test'
+
+      node.checkin('facts' => { 'f1' => 'b' })
+      node.reload
+      node.tags.should == []
+    end
+  end
+
   describe "binding on checkin" do
     hw_id = "001122334455"
 
@@ -295,8 +338,8 @@ describe Razor::Data::Node do
       node.modified?.should be_false
 
       node.policy.should == policy
-      node.log.last["action"].should == "reboot"
-      node.log.last["policy"].should == policy.name
+      node.log.first["action"].should == "reboot"
+      node.log.first["policy"].should == policy.name
     end
 
     it "should refuse to bind to a policy if any tag raises an error" do
@@ -347,7 +390,8 @@ describe Razor::Data::Node do
       it "should not change when policies change" do
         # Setup
         policy20 = make_tagged_policy(20)
-        node.match_and_bind
+        node.match_tags
+        node.bind_policy
         node.policy.should == policy20
 
         # Change the policies
@@ -366,13 +410,13 @@ describe Razor::Data::Node do
         policy20 = make_tagged_policy(20)
         node.checkin("facts" => { "f1" => "a" })
         node.reload
-        node.tags.should be_empty
         node.policy.should == random_policy
       end
 
-      it "should not change when a tag changes" do
+      it "should update tags" do
         policy20 = make_tagged_policy(20)
-        node.match_and_bind
+        node.match_tags
+        node.bind_policy
         node.policy.should == policy20
 
         # Make the tag not match the node anymore
@@ -382,8 +426,8 @@ describe Razor::Data::Node do
 
         node.checkin("facts" => { "f1" => "a" })
         node.reload
-        # node.tags reflects the tags that applied when the node was bound
-        node.tags.should == [ tag ]
+        # node.tags should be updated to be an empty set since the match is false
+        node.tags.should == []
         node.policy.should == policy20
       end
     end
@@ -512,6 +556,24 @@ describe Razor::Data::Node do
 
           Node.register(facts)
           Node[n2.id].should be_nil
+        end
+
+        it "should retain fact hw_info from first checkin" do
+          n1_hw_hash = { "mac" => ["00-11-22-33-44-55"], "uuid" => "lookup", "fact_fact1" => "value1", "fact_fact2" => "value2" }
+
+          facts = {
+              "uuid"       => "register",
+              "macaddress" => "00:11:22:33:44:55"
+          }
+
+          n1 = Fabricate(:node, :hw_hash => n1_hw_hash,
+                         :facts => { "fact1" => "value1", "fact2" => "value2" })
+
+          Node.register(facts)
+          Node[n1.id].hw_hash.should == {"fact_fact1" => "value1",
+                                         "fact_fact2" => "value2",
+                                         "mac" => ["00-11-22-33-44-55"],
+                                         "uuid" => "register"}
         end
       end
     end

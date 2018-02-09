@@ -1,4 +1,0 @@
----
-os_version: Windows_Server_2012_SERVERDATACENTER
-description: Microsoft Windows 2012 Datacenter
-base: windows2012

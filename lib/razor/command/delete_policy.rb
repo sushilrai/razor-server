@@ -7,16 +7,26 @@ the number of nodes bound to that policy.  Any node that was installed will
 remain "installed", and will not be matched to by other policy.
   EOT
 
-  example <<-EOT
+  example api: <<-EOT
 Delete the policy "obsolete":
 
     {"name": "obsolete"}
   EOT
 
+  example cli: <<-EOT
+Delete the policy "obsolete":
+
+    razor delete-policy --name obsolete
+
+With positional arguments, this can be shortened::
+
+    razor delete-policy obsolete
+  EOT
+
 
   authz '%{name}'
   attr  'name', type: String, required: true, size: 1..Float::INFINITY,
-                help: _('The name of the policy to delete.')
+                position: 0, help: _('The name of the policy to delete.')
 
   def run(request, data)
     # deleting a policy will first remove the policy from any node associated

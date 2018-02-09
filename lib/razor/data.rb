@@ -49,21 +49,17 @@ module Razor::Data
         Razor.database.transaction(savepoint: true) do
           return create(data), true
         end
-      rescue Sequel::UniqueConstraintViolation
-        unless duplicate = find(name: data['name'])
+      rescue Sequel::UniqueConstraintViolation, Sequel::ValidationFailed => e
+        # Sequel::ValidationFailed can mean more than just duplicates; pass on
+        # the exception unless it matches.
+        raise e if e.is_a?(Sequel::ValidationFailed) and e.message !~ / is already taken$/
+        unless duplicate = find(name: /^#{Regexp.escape(data['name'])}$/i)
           # Guess the duplicate was deleted during the race between failure and
           # recovery, so we can just retry the operation and have it succeed.
           Razor.logger.info(_(<<-MSG) % {self: self, data: data})
 %{self}.create(%{data}) failed unique constraint, but missing duplicate, retrying
           MSG
-
-          retrycount = retrycount.to_i.succ
-
-          if retrycount < 10
-            retry
-          else
-            raise('Retry loop detected while trying to handle missing duplicate case')
-          end
+          retry
         end
 
         # Is this an exact match for the existing repo, or is it different?
@@ -74,7 +70,12 @@ module Razor::Data
         # do that.
         new_obj = new(data)
         different = fields_for_command_comparison.reject do |key|
-          duplicate.send(key) == new_obj.send(key)
+          attr = duplicate.send(key)
+          if attr.respond_to?('equals?')
+            attr.equals?(new_obj.send(key))
+          else
+            attr == new_obj.send(key)
+          end
         end
 
         # If we found differences, we want to inform the user of them.
@@ -122,7 +123,8 @@ require_relative 'data/task'
 require_relative 'data/repo'
 require_relative 'data/policy'
 require_relative 'data/tag'
-require_relative 'data/node_log_entry'
+require_relative 'data/event'
 require_relative 'data/node'
 require_relative 'data/broker'
+require_relative 'data/hook'
 require_relative 'data/command'

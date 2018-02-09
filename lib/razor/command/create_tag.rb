@@ -7,21 +7,30 @@ Create a new tag, and set the rule it will use to match on facts and node
 metadata.
   EOT
 
-  example <<-EOT
+  example api: <<-EOT
 Create a simple tag:
 
     {
       "name": "small",
       "rule": ["=", ["fact", "processorcount"], "2"]
     }
+  EOT
 
+  example cli: <<-EOT
+Create a simple tag:
+
+    razor create-tag --name small --rule '["=", ["fact", "processorcount"], "2"]'
+
+With positional arguments, this can be shortened::
+
+    razor create-tag small '["=", ["fact", "processorcount"], "2"]'
   EOT
 
   authz '%{name}'
   attr  'name', type: String, required: true, size: 1..Float::INFINITY,
-                help: _('The name of the tag')
+                position: 0, help: _('The name of the tag.')
 
-  attr 'rule', required: true, type: Array, help: _(<<-HELP)
+  attr 'rule', required: true, type: Array, position: 1, help: _(<<-HELP)
     The tag matches a node if evaluating this run against the tag’s facts
     results in true. Note that tag matching is case sensitive.
 
@@ -35,11 +44,11 @@ Create a simple tag:
 
         ["in", ["fact", "macaddress"], "de:ea:db:ee:f0:00", "de:ea:db:ee:f0:01"]
 
-    The syntax for rule expressions is defined in
-    `lib/razor/matcher.rb`. Expressions are of the form `[op arg1 arg2 .. argn]`
+    The syntax for rule expressions is defined in `lib/razor/matcher.rb`.
+    Expressions are of the form `[op arg1 arg2 .. argn]`
     where op is one of the operators below, and arg1 through argn are the
     arguments for the operator. If they are expressions themselves, they will
-    be evaluated before op is evaluated
+    be evaluated before `op` is evaluated.
   HELP
 
   def run(request, data)

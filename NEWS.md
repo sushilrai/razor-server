@@ -1,5 +1,379 @@
 # Razor Server Release Notes
 
+## 1.7.0 - 2018-01-17
+
+### API changes
+
++ NEW: Added `repo_file_contents` method for use in templates that
+  returns the contents of a file in the repo.
++ NEW: Added `repo_file?` method for use in task templates that returns
+  a path to a file in a repo, if it exists. This will replace the
+  current `repo_file` method.
+
+### Task changes
+
++ BUGFIX: Task method `repo_file` was not functional for remote repo
+  sources. Stock task usages of this function have been replaced with
+  the two methods above.
++ NEW: Added ESXi 6 task, `vmware_esxi/6`.
++ NEW: Added Ubuntu Xenial task, `ubuntu/xenial`.
++ NEW: Added UEFI support for Windows 2012r2 and 2016 on x64 machines.
++ NEW: On the Windows side, ADK 10 is now supported. The output from
+  `build-razor-winpe.ps1` will now be named `boot.wim`.
+
+### Other
+
++ NEW: The final step of internationalization, reading the locale from
+  incoming API messages, is complete. Razor will now parse the
+  ACCEPT_LANGUAGE header in requests.
++ NEW: Added `has_macaddress_like` tag matcher, which will use a regex
+  to match macaddresses.
++ NEW: A new `fact_boot_type` value in `hw_info` will reveal which
+  style of booting is used, whether that be `efi` or `pcbios`.
++ IMPROVEMENT: When nodes PXE boot, their `hw_info` will be preserved,
+  even if it is not used for matching to a node in the Razor database.
++ IMPROVEMENT: Updated the README to reference the latest version of the
+  microkernel.
+
+## 1.6.1 - 2017-03-09
+
+### Task changes
+
++ NEW: Added tasks for SLES versions 11 and 12.
++ NEW: Added task for Windows Server 2016
+
+### Broker changes
+
++ IMPROVEMENT: The Windows PE installer now downloads directly from the
+  puppet master. The `windows_agent_download_url` config property is
+  now ignored.
+
+### Other
+
++ BUGFIX: Fixed unauthenticated commands being executed when
+  `auth.allow_localhost` is enabled.
++ BUGFIX: Allow properties to be deleted when the on-disk types
+  (broker-type, hook-type) change.
+
+## 1.5.0 - 2016-10-20
+
+### API changes
+
++ BUGFIX: The `set-node-hw-info` command now works if the 
+  `match_nodes_on` Razor config includes `mac` (default).`
++ BUGFIX: The `update-node-metadata` and `modify-node-metadata` commands
+  now throw the intended errors if `no_replace` is supplied and the key
+  exists. For the latter command, you may supply the new argument
+  `force` to achieve the old functionality of simply skipping the
+  replacing key.
++ NEW: Added `update-policy-node-metadata` command to facilitate
+  changing the metadata that gets added to a node when it binds to a
+  policy.
++ NEW: Added `update-policy-repo` command to facilitate changing
+  the repo associated with a policy without needing to manually update
+  the repo's contents or delete the policy.
++ NEW: Added `update-policy-broker` command to facilitate
+  migrating the broker that a policy uses.
++ IMPROVEMENT: The `set-node-hw-info` command can now accept `mac` as an
+  argument.
+  
+### Task changes
+
++ NEW: Added Fedora 23 task.
+
+### Broker changes
+
++ RENAME: The `puppet` broker, which works for Puppet 3, has been
+  renamed to `legacy-puppet`. Use the `update-policy-broker` command to
+  migrate existing policies that must still use the old `puppet` broker.
++ NEW: The new `puppet` broker will work for Puppet 4.
+
+### Other
+
++ IMPROVEMENT: Nodes will now store all `hw_info`, not just the values
+  used for matching to nodes in the database.
++ BUGFIX: The `puppet-pe` broker for Windows now works properly for
+  non-English 64-bit Windows ISO files.
++ BUGFIX: The windows tasks now utilize an optional `win_language`
+  configuration in a node's metadata which allows users to install ISOs
+  in languages other than English.
++ BUGFIX: Fixed the deletion of repos when the Razor server is running
+  on Ubuntu.
++ IMPROVEMENT: The microkernel now works with non-string `is_virtual`
+  fact.
++ IMPROVEMENT: The `puppet` and `puppet-pe` brokers will now attempt to
+  run `ntpdate` if the `ntpdate_server` config is set.
+
+## 1.4.0 - 2016-07-06
+
+### API changes
+
++ IMPROVEMENT: Pathing is now consistent with the All-In-One (AIO) agent format.
+  Packaging will move these files automatically. These are the included pathing
+  changes:
+  - `/etc/razor/config.yaml` to `/etc/puppetlabs/razor-server/config.yaml`
+  - `/etc/razor/shiro.ini` to `/etc/puppetlabs/razor-server/shiro.ini`
+  - `/var/log/razor-server/server.log` to `/var/log/puppetlabs/razor-server/server.log`
+  - `hooks`, `brokers`, and `tasks` from `/opt/razor` are now in 
+    `/opt/puppetlabs/server/apps/razor-server/share/razor-server`
++ IMPROVEMENT: Updating Torquebox to 3.1.2 and JRuby to 1.7.19.
+
+## 1.3.0 - 2016-05-19
+
+### API changes
+
++ NEW: Added "has_macaddress" tag matcher. Use this rather than
+  `["fact", "macaddress"]`.
++ NEW: Added `config` collection to display active config settings.
++ NEW: Added `allow_localhost` config to allow bypassing authentication when
+  requests originate from localhost.
++ BUGFIX: "microkernel.debug_level" is now no longer ignored.
+
+## 1.2.0 - 2016-03-08
+
+### API changes
+
++ NEW: Added positional arguments to API. These will be included in the help
+  for each command.
++ IMPROVEMENT: Add datatype for `node` argument of `set-node-hw-info` command.
+  The metadata for this argument wasn't included before, and is now declared
+  properly as a String.
+
+### Task changes
+
++ IMPROVEMENT: Updated and standardized documentation and metadata for existing
+  stock tasks. Labels, descriptions, and README.md files inside these stock
+  tasks should now be up-to-date.
++ IMPROVEMENT: Updated Debian and Ubuntu stock tasks to use Pacific Time rather
+  than Central Time and UTC, respectively.
+
+### Other
+
++ BUGFIX: When a repo is deleted, the repo directory will also be deleted if it
+  downloaded and extracted an ISO with the `iso-url` property.
++ BUGFIX: Nodes will match tags even if the node is already marked installed
+  (through e.g. the `protect_new_nodes` config) or bound to a policy.
++ NEW: Added flag "allowunsigned" to allow unsigned drivers to be added to the
+  WinPE image for Windows installations.
++ IMPROVEMENT: Made the Powershell script that builds Razor's WinPE image more
+  robust in its error handling.
++ IMPROVEMENT: Added documentation for the `update-broker-configuration` command
+  to api.md.
+
+## 1.1.0 - 2015-11-12
+
+### Incompatible changes
+
++ The service will now run on port 8150 for HTTP. This will be updated
+  through packaging.
+
+### Other
+
++ BUGFIX: The EL7 packages will now start the razor-server service properly.
++ BUGFIX: Tasks created through the `create-task` command will now find
+  the correct boot stage, rather than feeding the `default` stage at each boot.
++ BUGFIX: Old hook configuration can now be removed if the hook's
+  configuration.yaml is modified to remove an attribute.
++ BUGFIX: Actually use separate message queue for hook execution. This
+  previously used the same queue as the database messages.
++ BUGFIX: The unused `windows_download_url` property of the `puppet-pe` broker
+  has been removed in favor of `windows_agent_download_url`, an optional URL
+  indicating where to download the Windows PE agent. 
++ NEW: Added stock hook for dynamic assignment of hostnames. More details on
+  this new hook can be found in the hostname.hook directory's README.md.
++ NEW: Task added for Windows 2008 R2. Details are on the [Wiki](https://github.com/puppetlabs/razor-server/wiki/Installing-windows).
++ NEW: `hook_execution_path` config.yaml property is a path which will be
+  prepended to the default execution path when running hooks.
++ NEW: `reinstall-node` now accepts a `same_policy` argument, which indicates
+  that the node should skip over the microkernel and policy-binding stage,
+  and just proceed with a reinstall of the current policy.
++ NEW: The `like` tag matcher can be used to match expressions to a regular
+  expression. This can be used, for example, to match on a range of MAC
+  addresses. 
++ NEW: The `str` tag matcher can be used to convert input (likely numeric)
+  into a string.
++ NEW: The `update-broker-configuration` command can be used to update the
+  configuration of a broker.
++ IMPROVEMENT: The `puppet` broker has been updated to use URLs to find RPM/DEB
+  files for supported OS's.
++ IMPROVEMENT: Stock tasks have been updated to prefer node metadata for both
+  `root_password` and `hostname`. These will fall back to the default on the
+  policy if the node metadata does not exist.
++ IMPROVEMENT: The Windows stock tasks will prefer node metadata for timezone,
+  falling back to Pacific Standard Time.
++ IMPROVEMENT: More verbose and clear log messages will be included for hook
+  execution. As part of this, STDERR will be reported as part of the log.
++ IMPROVEMENT: Broker configuration now, like hook configuration, allows the
+  usage of the `default` keyword, indicating the starting value for a
+  configuration property if not overridden upon creation.
++ IMPROVEMENT: The Windows build-winpe step now allows the addition of extra
+  drivers to the generated .wim file. The drivers (.inf extension) need to be
+  added to the `extra-drivers` folder inside the build-winpe directory.
++ IMPROVEMENT: For clarity, the build-winpe step will generate `razor-winpe.wim`
+  rather than `winpe.wim`. This way, the file can be copied to the razor-server
+  without requiring renaming.
++ IMPROVEMENT: Line endings for SetupComplete.cmd.erb are now in Windows format,
+  causing the rendered SetupComplete.cmd file to be legible on Windows systems.
++ IMPROVEMENT: The RAZOR_HTTP_PORT environment variable will now be used to
+  tell the razor service which port to use for HTTP traffic.
++ IMPROVEMENT: The `bootstrap` URL will now guess what the correct http_port
+  value should be, typically falling back to the URL used for the `/bootstrap`
+  request. 
+
+## 1.0.1 - 2015-06-11
+
+### Other
+
++ NEW: The `update-hook-configuration` command allows changing an existing
+  hook's configuration, which should help with hook script creation.
++ NEW: The `run-hook` command allows arbitrary execution of a hook.
++ NEW: The `store_hook_input` and `store_hook_output` config settings can
+  toggle storing the input and output for a hook script in the event log. These
+  are disabled by default.
++ IMPROVEMENT: Determine the WinPE drive letter programmatically for Windows
+  tasks.
++ IMPROVEMENT: Show severity for an event in node log view.
++ IMPROVEMENT: Log when the `puppet-pe` broker fails execution.
+
+## 1.0.0 - 2015-06-08
+
+### Incompatible changes
+
++ Some of the stock tasks have been renamed. If you used the previous ubuntu
+  tasks, these have been changed to a more standard naming scheme. The `ubuntu`
+  task points to Trusty, and the others are `ubuntu/precise` and `ubuntu/lucid`
+  instead of the previous longer names e.g. `ubuntu_precise_amd64`. Use the new
+  commands `update-policy-task` and `update-repo-task` to change existing
+  policies and repos to use these new task names.
++ `modify_policy_max_count` now uses `no_max_count` to indicate that the
+  policy should be unbounded.
+
+### Other
+
++ NEW: The `update-policy-task` command can be used to migrate policies if the
+  associated task's name changes.
++ NEW: The `update-repo-task` command can be used to migrate repos if the
+  associated task's name changes.
++ NEW: The `secure_api` config property can be used to ensure that
+  communications with /api are secure. When this is true, all calls to the
+  namespace need to be over HTTPS with SSL, and otherwise will return a 404.
+  The actual configuration of this happens in Torquebox's configuration. By
+  default, this property is false (no change from current behavior).
++ IMPROVEMENT: `HTTP_PORT` and `HTTPS_PORT` will be used to set the ports for
+  HTTP and HTTPS communication instead of `RAZOR_PORT`
++ NEW: If the razor-server is configured to use SSL, any HTTPS calls to
+  /api/microkernel/bootstrap must include the `http_port` argument.
++ NEW: The `like` matcher function will allow Regex-based string evaluation
+  when matching nodes to tags.
++ NEW: The `str` matcher function will convert numbers, strings, and booleans
+  to strings.
++ BUGFIX: Any metadata that returned an array or hash caused unreliable
+  behavior when referenced in tags. This will now return a helpful error.
++ IMPROVEMENT: The task link in `create-policy` is now optional, deferring to
+  the task in the repo if not provided.
++ NEW: Configuration now allows a defaults file. The RAZOR_CONFIG_DEFAULTS
+  environment variable can tell Razor where this file exists, or it will
+  look for /opt/razor/config-defaults.yaml by default. Any config absent from
+  the normal config.yaml file will be pulled from here next.
++ IMPROVEMENT: The redhat task now allows node metadata to run the RHN
+  subscription command. `rhn_username`, `rhn_password`, and `rhn_activationkey`
+  can be used for this. See the README.md inside the task for more information.
++ IMPROVEMENT: MAC addresses supplied with 'net' prefixes will now be
+  standardized to match those in the 'mac' fact.
++ NEW: Metadata can now be structured. If the metadata is either an array or an
+  object, this can be used in tasks, hooks, and brokers, but not tags currently.
++ IMPROVEMENT: Each stock task that references node metadata now has a README.md
+  file that describes the values it uses.
++ IMPROVEMENT: The redhat task now uses the node's "timezone" metadata value to
+  set the time
++ IMPROVEMENT: Now using a later version of the Sequel gem.
++ IMPROVEMENT: Better logging when files are being retrieved from Razor in
+  brokers and tasks.
++ IMPROVEMENT: API standardized to use underscores for property names.
++ NEW: `aliases` added to API for better datatype recognition in argument
+  metadata.
++ IMPROVEMENT: The hooks.md file has been revamped, now including a full
+  example.
++ BUGFIX: Tags on policies are now being serialized properly when passed to the
+  hook as input.
+
+## 0.16.1 - 2015-01-12
+
+### Other
+
++ BUGFIX: Fixing a bug that would not allow new events to be created
+  in the database due to a plugin conflict.
+
+## 0.16.0 - 2015-01-05
+
+### Incompatible changes
+
++ Tags will be unique in a case-insensitive manner. Previously, tags
+  could have existed as e.g. 'mytag' and 'MyTag'. A migration in this
+  release will rename conflicting tags, appending a digit to the end,
+  e.g. 'mytag' and 'MyTag1'.
++ The `update-node-metadata` command no longer accepts the `all`
+  argument. This argument should have never been accepted by the 
+  command, and had no effect. Instead, `modify-node-metadata` can be 
+  called with either the `clear` argument to remove all keys, or the 
+  `update` argument to set all keys to certain values, which achieves 
+  the same function.
+
+### API changes
+
++ `create-hook` and `delete-hook` are two new commands for managing
+  hooks.
++ `events` collection now displays events from the Razor server.
+  This can be scoped by querying `nodes/$name/log` or
+  `hooks/$name/$log`.
++ Various collections can now be limited and offset by supplying
+  `limit` and `start` parameters. These parameters can be discovered
+  via the logically prior endpoint. For `/api/collections/events`,
+  this is in `/api`. For `/api/collections/nodes/$name/log`, this is
+  in `/api/collections/nodes/$name`.
++ Help text now exists for razor-client in addition to just the API.
+  This is accessible via a GET on the command's endpoint, where the
+  new 'examples' key in the help text has 'api' and 'cli' as sub-keys.
++ The `create-repo` command now accepts a `--no-content` argument,
+  which signifies that neither the `--iso-url` nor the `--url`
+  arguments will be supplied, and instead an empty directory will be
+  created.
++ `create-tag` is now idempotent.
+
+### Task changes
+
++ NEW: Added Windows tasks for 2012R2.
++ NEW: Added Ubuntu tasks for Lucid (10.04) and Trusty (14.04).
++ NEW: Windows tasks can execute brokers.
++ BUGFIX: Fixed existing Debian i386 task.
++ IMPROVEMENT: Windows default task (8 pro) now utilizes node's
+  root_password value rather than the default `razor`.
++ IMPROVEMENT: Windows tasks now use newer wimboot (2.4.0)
++ IMPROVEMENT: Debian and Ubuntu (Trusty only) can allow hostname
+  without '.' for fetching preseed file.
+
+### Other
+
++ NEW: Hooks. See `hooks.md` for details on how to write and use hooks.
++ NEW: Separate API and CLI help examples: There are now two formats for help
+  examples. The new CLI format shows help text as a standard razor-client
+  command.
++ IMPROVEMENT: Updating Torquebox to 3.1.1 and JRuby to 1.7.13.
++ BUGFIX: Fixing heap space issues with default settings in Torquebox.
++ IMPROVEMENT: Standardizing behavior for creating two entities whose names only
+  differ in case.
++ IMPROVEMENT: Adding idempotency in `create-tag`.
++ NEW: Exposing IPMI details (username and hostname) in `razor --full nodes`.
++ NEW: Provide warning in `create-policy` if the user attempts to create a
+  tag, a feature which was removed in 0.15.0.
++ IMPROVEMENT: `create-broker` now accepts argument `c` as an alias for
+  `configuration`.
++ NEW: Brokers can now use arbitrary executable files for installation,
+  which is most helpful for Powershell in Windows.
++ BUGFIX: Some attempts to contact Razor server are retried upon failure.
++ BUGFIX: Disallowing old versions of Sinatra where download of initrd.gz
+  would hang.
+
 ## 0.15.0 - 2014-05-22
 
 ### Incompatible changes

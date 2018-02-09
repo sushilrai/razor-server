@@ -27,6 +27,7 @@ describe "provisioning API" do
   it "should 409 if the node is not bound to a policy" do
     get "/svc/broker/#{node.id}/install"
     last_response.status.should == 409
+    last_response.json['error'].should == "node #{node.id} not bound to a policy yet"
   end
 
   context "with a bound node" do
@@ -42,7 +43,38 @@ describe "provisioning API" do
 
       last_response.status.should == 200
       last_response.content_type.should =~ /text\/plain/
-      last_response.body.should == "# there is no meaningful content here\n"
+      # Make sure stage_done_url is populating too.
+      last_response.body.should == "# there is no meaningful content here"
+    end
+
+    it "should return the specified install script for the node" do
+      get "/svc/broker/#{node.id}/install?script=install.ps1"
+
+      last_response.status.should == 200
+      last_response.content_type.should =~ /text\/plain/
+      # Make sure stage_done_url is populating too.
+      last_response.body.should == "# sample ps1 file"
+    end
+    it "should return the specified install script for the node" do
+      get "/svc/broker/#{node.id}/install?script=install-template-vars"
+
+      last_response.status.should == 200
+      last_response.content_type.should =~ /text\/plain/
+      # Make sure stage_done_url is populating too.
+      last_response.body.should == <<-TXT.strip
+stage_done_url: http://example.org/svc/stage-done/#{node.id}?name=broker
+node: #{node.id}
+broker: {}
+      TXT
+    end
+
+    it "should fail if script does not exist" do
+      get "/svc/broker/#{node.id}/install?script=does-not-exist"
+
+      last_response.json['error'].should == 'install template does-not-exist.erb does not exist'
+      last_response.json['details'].should == "could not find install template 'does-not-exist.erb' for broker '#{policy.broker.name}'"
+      last_response.status.should == 404
+      last_response.content_type.should =~ /text\/plain/
     end
   end
 end

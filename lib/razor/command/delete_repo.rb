@@ -6,15 +6,25 @@ The repo, and any associated content on disk, will be removed.  This will fail
 if the repo is in use with an existing policy.
   EOT
 
-  example <<-EOT
+  example api: <<-EOT
 Delete the "fedora16" repo:
 
     {"name": "fedora16"}
   EOT
 
+  example cli: <<-EOT
+Delete the "fedora16" repo:
+
+    razor delete-repo --name fedora16
+
+With positional arguments, this can be shortened::
+
+    razor delete-repo fedora16
+  EOT
+
   authz '%{name}'
-  attr  'name', type: String, required: true, size: 1..250,
-        help: _('The name of the repo to delete')
+  attr  'name', type: String, required: true, size: 1..250, position: 0,
+        help: _('The name of the repo to delete.')
 
   def run(request, data)
     if repo = Razor::Data::Repo[:name => data['name']]

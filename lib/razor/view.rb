@@ -97,7 +97,7 @@ module Razor
 
       view_object_hash(broker).merge(
         :configuration   => broker.configuration,
-        :"broker-type"   => broker.broker_type,
+        :broker_type   => broker.broker_type,
         :policies        => { :id => view_object_url(broker) + "/policies",
                               :count => broker.policies.count,
                               :name => "policies" })
@@ -137,7 +137,8 @@ module Razor
         :dhcp_mac      => node.dhcp_mac,
         :policy        => view_object_reference(node.policy),
         :log           => { :id => view_object_url(node) + "/log",
-                            :name => "log" },
+                            :name => "log",
+                            :params => {'limit' => {'type' => 'number'}, 'start' => {'type' => 'number'} }},
         :tags          => node.tags.map { |t| view_object_reference(t) },
         :facts         => node.facts,
         :metadata      => node.metadata,
@@ -145,14 +146,16 @@ module Razor
           :installed    => node.installed || false,
           :installed_at => ts(node.installed_at),
           :stage        => boot_stage,
-        }.delete_if { |k,v| v.nil? },
+        }.delete_if { |_,v| v.nil? },
         :power => {
           :desired_power_state        => node.desired_power_state,
           :last_known_power_state     => node.last_known_power_state,
           :last_power_state_update_at => node.last_power_state_update_at
-        }.delete_if { |k,v| v.nil? },
+        }.delete_if { |_,v| v.nil? },
         :hostname      => node.hostname,
         :root_password => node.root_password,
+        :ipmi          => { :hostname => node.ipmi_hostname,
+                            :username => node.ipmi_username }.delete_if { |_,v| v.nil? },
         :last_checkin  => ts(node.last_checkin)
       ).delete_if {|k,v| v.nil? or ( v.is_a? Hash and v.empty? ) }
     end
@@ -177,16 +180,54 @@ module Razor
       ).delete_if {|k,v| v.nil? or ( v.is_a? Hash and v.empty? ) }
     end
 
-    def collection_view(cursor, name)
+    def event_hash(event)
+      {
+        :spec      => spec_url("collections", "events", "member"),
+        :id        => view_object_url(event),
+        :name      => event.id,
+        :command   => view_object_reference(event.command),
+        :node      => view_object_reference(event.node),
+        :severity  => event.severity,
+        :policy    => view_object_reference(event.policy),
+        :repo      => view_object_reference(event.repo),
+        :broker    => view_object_reference(event.broker),
+        :task      => view_object_reference(event.task),
+        :timestamp => event.timestamp,
+        :entry     => JSON.parse(event[:entry])
+      }.delete_if {|k,v| v.nil? or ( v.is_a? Hash and v.empty? ) }
+    end
+
+    def hook_hash(hook)
+      view_object_hash(hook).merge(
+      {
+        :name          => hook.name,
+        :hook_type   => hook.hook_type,
+        :configuration => hook.configuration,
+        :log           => { :id => view_object_url(hook) + "/log",
+                            :name => "log",
+                            :params => {'limit' => {'type' => 'number'}, 'start' => {'type' => 'number'} }},
+      }.delete_if {|k,v| v.nil? or ( v.is_a? Hash and v.empty? ) })
+    end
+
+    # Produces a standard hash view for a collection given either
+    # a Class or a Dataset as `cursor`. `name` is a reference used
+    # in the spec string. Optional arguments are `limit` and
+    # `start`.
+    def collection_view(cursor, name, args = {})
       perm = "query:#{name}"
-      cursor = cursor.all if cursor.respond_to?(:all)
+      total = cursor.count if cursor.respond_to?(:count)
+      # This catches the case where a non-Sequel class is passed in.
+      cursor = cursor.all if cursor.is_a?(Class) and !cursor.respond_to?(:cursor)
+      cursor = cursor.limit(args[:limit], args[:start]) if cursor.respond_to?(:limit)
       items = cursor.
         map {|t| view_object_reference(t)}.
         select {|o| check_permissions!("#{perm}:#{o[:name]}") rescue nil }
-      {
-        "spec" => spec_url("collections", name),
-        "items" => items
-      }.to_json
+      hash = {
+          "spec" => spec_url("collections", name),
+          "items" => items
+      }
+      hash.store('total', total) if total
+      hash.to_json
     end
   end
 end

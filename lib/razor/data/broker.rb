@@ -2,6 +2,7 @@
 class Razor::Data::Broker < Sequel::Model
 
   one_to_many :policies
+  one_to_many :events
 
   plugin :serialization, :json, :configuration
 
@@ -33,8 +34,9 @@ class Razor::Data::Broker < Sequel::Model
 
       # Required keys that are missing from the supplied configuration.
       schema.each do |key, details|
-        next unless details['required']
         next if configuration.has_key? key
+        (configuration[key] = details['default']) and next if details['default']
+        next unless details['required']
         errors.add(:configuration, _("key '%{key}' is required by this broker type, but was not supplied") % {key: key})
       end
     else
@@ -57,9 +59,14 @@ class Razor::Data::Broker < Sequel::Model
   #
   # @param node [Razor::Data::Node] the node we are producing an install
   # script for.
+  # @param script [String] the name of the resulting install script, excluding
+  # its `.erb` extension. If this is omitted, it will look for `install.erb`
+  # @param options [Hash] any extra arguments which will be needed in the
+  # script. For example, the `stage_done_url` for the endpoint the script
+  # should call when the broker finishes.
   #
   # @return [String] the compiled installation script, ready to run.
-  def install_script_for(node)
-    broker_type.install_script(node, self)
+  def install_script_for(node, script = 'install', options = {})
+    broker_type.install_script(node, self, script, options)
   end
 end
