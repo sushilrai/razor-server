@@ -83,7 +83,7 @@ fi
 <%= render_template("puppet_conf") %>
 
 # Nagios NRPE configuration, used only for C* series machines
-if [[ "$(/usr/bin/facter productname)" =~ ^PowerEdge\ C62[0-9]+ ]]; then
+if [[ "$(/opt/puppetlabs/bin/facter productname)" =~ ^PowerEdge\ C62[0-9]+ ]]; then
   /bin/sed -i 's:allowed_hosts=127.0.0.1:allowed_hosts=dellasm,127.0.0.1:' /etc/nagios/nrpe.cfg
   /bin/sed -i '/^command\[/ s:^:#:' /etc/nagios/nrpe.cfg
 
@@ -125,8 +125,8 @@ __ASM_SELINUX__
 fi
 
 # For debugging, just in case, dump out the modified confirmation file.
-echo ====================[ /etc/puppet/puppet.conf ]=========================
-cat /etc/puppet/puppet.conf
+echo ====================[ /etc/puppetlabs/puppet/puppet.conf ]=========================
+cat /etc/puppetlabs/puppet/puppet.conf
 echo ========================================================================
 
 #start and enable the puppet agent
