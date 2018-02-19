@@ -1,0 +1,151 @@
+#!/bin/bash
+<% require 'shellwords' %>
+<% require 'uri' %>
+
+set -u
+set -e
+
+# Some utility functions.
+fail() { echo >&2 "$@"; exit 1; }
+warn() { echo >&2 "$@"; }
+cmd()  { hash "$1" >&/dev/null; } # portable 'which'
+
+# Get OS name and version
+flavor="<%= node.facts['os']['name'].downcase || "" %>"
+release="<%= node.facts['os']['release']['major'] || "" %>"
+if [ "$flavor" ==  "" ]; then
+    RELEASE_DATA=$(cat /etc/*-release)
+    RELEASE_DATA_LL="${RELEASE_DATA##*$'\n'}"
+    flavor="$(echo $s1 | cut -f2 | tr [:upper:] [:lower:] | awk '{ print $1 }')"
+fi
+
+if [ "$release" ==  "" ]; then
+    RELEASE_DATA=$(cat /etc/*-release)
+    RELEASE_DATA_LL="${RELEASE_DATA##*$'\n'}"
+    release="$(echo $RELEASE_DATA_LLecho $RELEASE_DATA_LL | cut -f2 | cut -d. -f1 | awk '{ print $4  }')"
+fi
+
+#add the puppet master host entry in /etc/hosts
+if ! grep -q <%= broker[:server] %> /etc/hosts; then
+echo "<%= URI.parse(stage_done_url).host %> <%= broker[:server] %>" >> /etc/hosts
+fi
+
+### Enable ASM / ASM Puppet repo and install puppet-agent
+rpm -Uvh http://<%= broker[:server] %>:8080/svc/repo/puppet-agent/rhel${release}/x86_64/puppet-release-1.0.0-1.el${release}.noarch.rpm
+sed -i -e "s,http://yum.puppetlabs.com/puppet/el/$release/\$basearch,http://<%= broker[:server] %>:8080/svc/repo/puppet-agent/rhel\$releasever/\$basearch," /etc/yum.repos.d/puppet.repo
+yum --disablerepo=* --enablerepo=puppet install puppet-agent -y
+
+# NTP Setting
+ntp_server="<%=
+  options = node.policy.node_metadata['installer_options'] || {}
+  (options['ntp_server'] || '').strip.size > 0 ? options['ntp_server'] : ""
+%>"
+
+### NTP CONFIGURATIONS ###
+if [[ "$ntp_server" != "" ]]; then
+    mv /etc/ntp.conf /etc/ntp.conf.orig
+    # Comment out original server lines
+    sed -e 's/^\(\s*server.*\)/#\1/' /etc/ntp.conf.orig > /etc/ntp.conf
+
+    # Append desired server entry
+    echo "# SERVER(S) ADDED BY ASM KICKSTART" >> /etc/ntp.conf
+<% (options['ntp_server'] || '').strip.split(',').each do |ntp| %>
+    echo "server <%= ntp.strip %> iburst" >> /etc/ntp.conf
+<% end %>
+
+    if [[ "$flavor" == "centos" || "$flavor" == "redhat" ]] && [ "$release" == "7" ]; then
+        systemctl enable ntpd.service
+        systemctl start ntpd.service
+    elif [[ "$flavor" == "centos" || "$flavor" == "redhat" ]] && [ "$release" == "6" ]; then
+        /sbin/chkconfig --level 345 ntpd on
+        service ntpd start
+    else
+        fail "only CentOS and RHEL (ver. 6 / 7) are supported at the moment."
+    fi
+fi
+
+#update puppet.conf file
+cat > /etc/puppetlabs/puppet/puppet.conf << EOF
+[main]
+server = <%= broker[:server] %>
+logdir = /var/log/puppet
+rundir = /var/run/puppet
+ssldir = \$vardir/ssl
+configtimeout = 600
+runinterval = 5m
+[agent]
+classfile   = \$vardir/classes.txt
+localconfig = \$vardir/localconfig
+certname    = <%= node.policy.node_metadata["installer_options"]["agent_certname"] %>
+EOF
+
+
+# For debugging, just in case, dump out the modified confirmation file.
+echo ====================[ /etc/puppetlabs/puppet/puppet.conf ]=========================
+cat /etc/puppetlabs/puppet/puppet.conf
+echo ========================================================================
+
+#start and enable the puppet agent
+if [[ "$flavor" == "centos" || "$flavor" == "redhat" ]] && [ "$release" == "7" ]; then
+    # RHEL7 distro comes with systemd service file, but the default dependency description does not ensure puppet to wait for network service
+    # The following lines add required Service Unit segment(s) and/or target(s)
+    SVCFILE=/usr/lib/systemd/system/puppet.service
+
+    # Ensure network-online.target is in Requires=
+    if ! grep Requires "$SVCFILE" > /dev/null; then
+        sed -i '/^After=/ i Requires=network-online.target' "$SVCFILE"
+        fi
+        if ! grep Requires "$SVCFILE" | grep network-online.target > /dev/null; then
+        echo "Failed to set Requires=network-online.target in '$SVCFILE'"
+        exit 1
+    fi
+
+    # Ensure network-online.target is in After=
+    if ! grep After "$SVCFILE" | grep network-online.target > /dev/null; then
+        sed -i "/After=/ s/$/ network-online.target/" $SVCFILE
+        fi
+        if ! grep After "$SVCFILE" | grep network-online.target > /dev/null; then
+        echo "Failed to set After=network-online.target in '$SVCFILE'"
+        exit 2
+    fi
+
+
+    # RHEL7 distro has a puppet bug that does not remove the lock file successfully even when there's no puppet process running.
+    # The following crontab task should remove it during the reboot only if there is no running puppet process.
+    cat > /etc/systemd/system/puppetclean.service << PPCSERVICE
+[Unit]
+Description=Clean up the puppet agent lock file without puppet process running
+Wants=basic.target
+After=basic.target
+Before=puppet.service
+
+[Service]
+ExecStart=/bin/find /var/lib/puppet/state/agent_catalog_run.lock -size 0 -delete
+
+[Install]
+WantedBy=multi-user.target
+PPCSERVICE
+
+    chmod 644 /usr/lib/systemd/system/puppet.service
+    chmod 644 /etc/systemd/system/puppetclean.service
+
+    systemctl enable puppetclean
+    systemctl start puppetclean
+
+    systemctl enable puppet.service
+    systemctl start puppet.service
+elif [[ "$flavor" == "centos" || "$flavor" == "redhat" ]] && [ "$release" == "6" ]; then
+    chkconfig puppet on
+    service puppet start
+else
+    fail "only CentOS and RHEL (ver. 6 / 7) are supported at the moment."
+fi
+
+# Log that the broker is finished.
+if cmd curl; then
+    curl -sL "<%= stage_done_url %>" || fail "curl failed to log broker completion"
+elif cmd wget; then
+    wget -qO- "<%= stage_done_url %>" || fail "wget failed to log broker completion" &> /dev/null
+else
+    warn "neither curl nor wget installed; cannot log completion of broker"
+fi
