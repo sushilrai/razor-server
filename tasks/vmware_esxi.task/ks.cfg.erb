@@ -25,7 +25,7 @@ if options && !options.empty?
   end
 end
 
-if boot_device == "AHCI_VSAN"
+if boot_device == "AHCI_VSAN" || "LOCAL_FLASH_STORAGE"
   "%include /tmp/disk_info"
 else
   "clearpart --firstdisk#{disk_arg} --overwritevmfs
@@ -64,8 +64,8 @@ if !options.nil? && !options.empty?
   else
     line += ' --nodns'
   end
-  if options['os_host_name']
-    line += " --hostname='#{options['os_host_name']}'"
+  if options['hostname']
+    line += " --hostname='#{options['hostname']}'"
   end
   line
 else
@@ -97,11 +97,11 @@ for disk in $disk_paths; do
     continue
   fi
   device=`basename $disk`
-  local_ata=`localcli storage core device list -d $device | grep -iE "Local ATA Disk|DELL Serial|Local DELL Disk"`
+  local_ata=`localcli storage core device list -d $device | grep -iE "Local ATA Disk|DELL Serial|Local DELL Disk|DELLBOSS|SATADOM"`
   if [ $? -eq 0 ]; then
     local_sas=`localcli storage core device list -d $device | grep -i "Is SAS: false"`
-    local_ata_dell=`localcli storage core device list -d $device | grep -iE "DELL Serial|Local DELL Disk"`
-    if [ -z "$local_sas" -a -z "$local_ata_dell" ] ; then
+    other_local_disk=`localcli storage core device list -d $device | grep -iE "DELL Serial|Local DELL Disk|SATADOM|DELLBOSS"`
+    if [ -z "$local_sas" -a -z "$other_local_disk" ] ; then
       continue
     fi
 
@@ -254,3 +254,4 @@ cp /var/log/hostd.log "/vmfs/volumes/$(hostname -s)-local-storage-1/firstboot-ho
 cp /var/log/esxi_install.log "/vmfs/volumes/$(hostname -s)-local-storage-1/firstboot-esxi_install.log"
 wget <%= stage_done_url("finished") %>
 reboot
+
