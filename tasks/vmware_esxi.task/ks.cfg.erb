@@ -25,7 +25,7 @@ if options && !options.empty?
   end
 end
 
-if boot_device == "AHCI_VSAN" || "LOCAL_FLASH_STORAGE"
+if boot_device == "AHCI_VSAN" || "LOCAL_FLASH_STORAGE" || "LOCAL_FLASH_STORAGE_FOR_SCALE_IO"
   "%include /tmp/disk_info"
 else
   "clearpart --firstdisk#{disk_arg} --overwritevmfs
@@ -96,15 +96,19 @@ for disk in $disk_paths; do
   if [ "$disk" == "Path:" -o "$disk" == "Devfs" ] ;  then
     continue
   fi
+  boot_device=<%=node.policy.node_metadata['installer_options']['target_boot_device']%>
   device=`basename $disk`
   local_ata=`localcli storage core device list -d $device | grep -iE "Local ATA Disk|DELL Serial|Local DELL Disk|DELLBOSS|SATADOM"`
   if [ $? -eq 0 ]; then
     local_sas=`localcli storage core device list -d $device | grep -i "Is SAS: false"`
-    other_local_disk=`localcli storage core device list -d $device | grep -iE "DELL Serial|Local DELL Disk|SATADOM|DELLBOSS"`
+    if [ "$boot_device" == "LOCAL_FLASH_STORAGE" ] || [ "$boot_device" == "LOCAL_FLASH_STORAGE_FOR_SCALE_IO" ] ; then
+      other_local_disk=`localcli storage core device list -d $device | grep -iE "SATADOM|DELLBOSS"`
+    else
+      other_local_disk=`localcli storage core device list -d $device | grep -iE "DELL Serial|Local DELL Disk"`
+    fi
     if [ -z "$local_sas" -a -z "$other_local_disk" ] ; then
       continue
     fi
-
     model=`localcli storage core device list -d $device | grep -i "Model:" | cut -d ":" -f2`
     model=`echo $model | awk '{$1=$1;print}'`
     echo clearpart --firstdisk=\"${model}\",local --overwritevmfs > /tmp/disk_info
