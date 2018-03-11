@@ -18,6 +18,22 @@ fi
 # careful though, since this file is also used by the CentOS installer, for
 # which there is no RHN registration
 
+# Disable base and updates repos as node may not have internet access
+
+yum-config-manager --disable base
+yum-config-manager --disable updates
+yum-config-manager --disable extras
+
+# Add base repo from iso
+cat > /etc/yum.repos.d/razor-internal.repo << EOF
+[razor-internal]
+name=Internal Razor OS Repository
+baseurl=<%= repo_url %>
+gpgcheck=1
+gpgkey=<%= repo_url %>/RPM-GPG-KEY-CentOS-\$releasever
+enabled=True
+EOF
+
 <%= render_template("os_complete") %>
 
 # We are done
