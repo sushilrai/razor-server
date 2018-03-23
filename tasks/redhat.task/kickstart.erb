@@ -14,10 +14,10 @@ rootpw --iscrypted <%=
     UnixCrypt::SHA512.build(asm_decrypted_password)
 %>
 <%
+   options = node.policy.node_metadata["installer_options"] || {}
 
-   options = node.policy.node_metadata["installer_options"]
    k_opts = ""
-   if options && options["network_configuration"]
+   if options["network_configuration"]
      require "json"
      require "asm/network_configuration"
 
@@ -45,7 +45,6 @@ network --hostname <%= node.hostname %> <%= k_opts unless k_opts.empty? %>
 firewall --enabled --ssh
 authconfig --enableshadow --passalgo=sha512 --enablefingerprint
 <%=
-    options = node.policy.node_metadata['installer_options'] || {}
     (options['time_zone'] || '').strip.size > 0 ? "timezone --utc #{options['time_zone']}" : 'timezone --utc America/Los_Angeles'
 
 %>
@@ -90,7 +89,12 @@ yum-utils
 
 # Only install the OS on the first virtual volume
 %pre
+<% if %w(HD).include?(options["target_boot_device"]) %>
   FIRST_PERC_VOL=$(ls -1 /dev/disk/by-path/pci-*-scsi-0:[1-9]:0:0 | head -1)
+<% else %>
+  FIRST_PERC_VOL=""
+<% end %>
+
    if [ -z "${FIRST_PERC_VOL}" ]; then
      FIRST_PERC_VOL=$(ls -1 /dev/disk/by-path/pci-*-scsi* | sort -t- -k 4 | head -1)
    fi
