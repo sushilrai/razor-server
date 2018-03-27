@@ -25,11 +25,6 @@ if [ "$release" ==  "" ]; then
     release="$(echo $RELEASE_DATA_LLecho $RELEASE_DATA_LL | cut -f2 | cut -d. -f1 | awk '{ print $4  }')"
 fi
 
-#add the puppet master host entry in /etc/hosts
-if ! grep -q <%= broker[:server] %> /etc/hosts; then
-echo "<%= URI.parse(stage_done_url).host %> <%= broker[:server] %>" >> /etc/hosts
-fi
-
 ### Enable ASM / ASM Puppet repo and install puppet-agent
 rpm -Uvh http://<%= broker[:server] %>:8080/svc/repo/puppet-agent/rhel${release}/x86_64/puppet-release-1.0.0-1.el${release}.noarch.rpm
 sed -i -e "s,http://yum.puppetlabs.com/puppet/el/$release/\$basearch,http://<%= broker[:server] %>:8080/svc/repo/puppet-agent/rhel\$releasever/\$basearch," /etc/yum.repos.d/puppet.repo
