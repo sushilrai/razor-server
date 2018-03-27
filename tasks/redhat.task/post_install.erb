@@ -18,6 +18,21 @@ fi
 # careful though, since this file is also used by the CentOS installer, for
 # which there is no RHN registration
 
+<%
+require "uri"
+
+parsed = URI.parse(repo_url)
+
+razor_ip = parsed.host
+
+parsed.host = "dellasm"
+
+iso_repo_url = parsed.to_s
+%>
+
+# add the dellasm host entry to /etc/hosts
+echo "<%= razor_ip %> dellasm" >> /etc/hosts
+
 # Disable base and updates repos as node may not have internet access
 
 yum-config-manager --disable base
@@ -28,9 +43,9 @@ yum-config-manager --disable extras
 cat > /etc/yum.repos.d/razor-internal.repo << EOF
 [razor-internal]
 name=Internal Razor OS Repository
-baseurl=<%= repo_url %>
+baseurl=<%= iso_repo_url %>
 gpgcheck=1
-gpgkey=<%= repo_url %>/RPM-GPG-KEY-CentOS-\$releasever
+gpgkey=<%= iso_repo_url %>/RPM-GPG-KEY-CentOS-\$releasever
 enabled=True
 EOF
 
