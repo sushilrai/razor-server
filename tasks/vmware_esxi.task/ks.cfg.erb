@@ -252,7 +252,9 @@ done
 
 # copy %first boot script logs to persisted datastore
 cp /var/log/hostd.log "/vmfs/volumes/$(hostname -s)-local-storage-1/firstboot-hostd.log"
+cp /var/log/hostd.log "/vmfs/volumes/datastore1/firstboot-hostd.log"
 cp /var/log/esxi_install.log "/vmfs/volumes/$(hostname -s)-local-storage-1/firstboot-esxi_install.log"
+cp /var/log/esxi_install.log "/vmfs/volumes/datastore1/firstboot-esxi_install.log"
 wget <%= stage_done_url("finished") %>
 reboot
 
