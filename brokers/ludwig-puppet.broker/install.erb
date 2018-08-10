@@ -11,23 +11,23 @@ warn() { echo >&2 "$@"; }
 cmd()  { hash "$1" >&/dev/null; } # portable 'which'
 
 # Get OS name and version
-flavor="<%= node.facts['os']['name'].downcase || "" %>"
-release="<%= node.facts['os']['release']['major'] || "" %>"
+flavor="<%= node.facts['os']['name'].downcase unless node.facts['os'].nil? || "" %>"
+release="<%= node.facts['os']['release']['major'] unless node.facts['os'].nil? || "" %>"
 if [ "$flavor" ==  "" ]; then
     RELEASE_DATA=$(cat /etc/*-release)
     RELEASE_DATA_LL="${RELEASE_DATA##*$'\n'}"
-    flavor="$(echo $s1 | cut -f2 | tr [:upper:] [:lower:] | awk '{ print $1 }')"
+    flavor="$(echo $RELEASE_DATA_LL | cut -f2 | tr [:upper:] [:lower:] | awk '{ print $1 }')"
 fi
 
 if [ "$release" ==  "" ]; then
     RELEASE_DATA=$(cat /etc/*-release)
     RELEASE_DATA_LL="${RELEASE_DATA##*$'\n'}"
-    release="$(echo $RELEASE_DATA_LLecho $RELEASE_DATA_LL | cut -f2 | cut -d. -f1 | awk '{ print $4  }')"
+    release="$(echo $RELEASE_DATA_LL | cut -f2 | cut -d. -f1 | awk '{ print $4  }')"
 fi
 
 ### Enable ASM / ASM Puppet repo and install puppet-agent
 rpm -Uvh http://<%= broker[:server] %>:8080/svc/repo/puppet-agent/rhel${release}/x86_64/puppet-release-1.0.0-1.el${release}.noarch.rpm
-sed -i -e "s,http://yum.puppetlabs.com/puppet/el/$release/\$basearch,http://<%= broker[:server] %>:8080/svc/repo/puppet-agent/rhel\$releasever/\$basearch," /etc/yum.repos.d/puppet.repo
+sed -i -e "s,http://yum.puppetlabs.com/puppet/el/$release/\$basearch,http://<%= broker[:server] %>:8080/svc/repo/puppet-agent/rhel$release/\$basearch," /etc/yum.repos.d/puppet.repo
 yum --disablerepo=* --enablerepo=puppet install puppet-agent -y
 
 # NTP Setting
