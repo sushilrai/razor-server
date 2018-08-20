@@ -11,8 +11,8 @@ warn() { echo >&2 "$@"; }
 cmd()  { hash "$1" >&/dev/null; } # portable 'which'
 
 # Get OS name and version
-flavor="<%= node.facts['os']['name'].downcase unless node.facts['os'].nil? || "" %>"
-release="<%= node.facts['os']['release']['major'] unless node.facts['os'].nil? || "" %>"
+flavor="<%= node.facts['os']['name'].downcase if node.facts['os']%>"
+release="<%= node.facts['os']['release']['major'] if node.facts['os']%>"
 if [ "$flavor" ==  "" ]; then
     RELEASE_DATA=$(cat /etc/*-release)
     RELEASE_DATA_LL="${RELEASE_DATA##*$'\n'}"
