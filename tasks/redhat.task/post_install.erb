@@ -39,15 +39,26 @@ yum-config-manager --disable base
 yum-config-manager --disable updates
 yum-config-manager --disable extras
 
+# Figure out which GPG key to use based on OS
+if grep -qi 'Red Hat' /etc/redhat-release; then
+  GPGKEY=RPM-GPG-KEY-redhat-release
+elif grep -qi 'CentOS' /etc/redhat-release; then
+  GPGKEY=RPM-GPG-KEY-CentOS-\$releasever
+else
+  echo "WARNING: Could not find GPG key, razor-internal OS repo will not be added."
+fi
+
 # Add base repo from iso
-cat > /etc/yum.repos.d/razor-internal.repo << EOF
+if [ ! -z "$GPGKEY" ]; then
+  cat > /etc/yum.repos.d/razor-internal.repo << EOF
 [razor-internal]
 name=Internal Razor OS Repository
 baseurl=<%= iso_repo_url %>
 gpgcheck=1
-gpgkey=<%= iso_repo_url %>/RPM-GPG-KEY-CentOS-\$releasever
+gpgkey=<%= iso_repo_url %>$GPGKEY
 enabled=True
 EOF
+fi
 
 <%= render_template("os_complete") %>
 
