@@ -61,8 +61,8 @@ case "${flavour}" in
         release="$(lsb_release -r | cut -f2 | cut -d. -f1)"
         case "${release}" in
             5) url="https://yum.puppetlabs.com/puppetlabs-release-pc1-el-5.noarch.rpm" ;;
-            6) url="https://yum.puppetlabs.com/puppetlabs-release-pc1-el-6.noarch.rpm" ;;
-            7) url="https://yum.puppetlabs.com/puppetlabs-release-pc1-el-7.noarch.rpm" ;;
+            6) url="http://<%= broker[:server] %>:8080/svc/repo/puppet-agent/rhel${release}/x86_64/puppet-release-1.0.0-1.el${release}.noarch.rpm" ;;
+            7) url="http://<%= broker[:server] %>:8080/svc/repo/puppet-agent/rhel${release}/x86_64/puppet-release-1.0.0-1.el${release}.noarch.rpm" ;;
             *) fail "sorry, don't know how release ${release} works!" ;;
         esac
 
@@ -73,6 +73,7 @@ case "${flavour}" in
             fail "unable to install the EL repository data file"
 
         # Install Puppet
+        sed -i -e "s,http://yum.puppetlabs.com/puppet/el/$release/\$basearch,http://<%= broker[:server] %>:8080/svc/repo/puppet-agent/rhel$release/\$basearch," /etc/yum.repos.d/puppet.repo
         yum -y install puppet-agent
         ;;
 
@@ -118,18 +119,57 @@ case "${flavour}" in
         ;;
 esac
 
+# NTP Setting
+ntp_server="<%=
+  options = node.policy.node_metadata['installer_options'] || {}
+  (options['ntp_server'] || '').strip.size > 0 ? options['ntp_server'] : ""
+%>"
 
-<% unless broker.empty? %>
-# Now, configuration.  Much as I love the idea of editing an ini file with
-# basic Unix tools like sed and awk, this seems much less worse, even if it
-# puts a puppet module you might not expect into place on disk.
-/opt/puppetlabs/bin/puppet module install puppetlabs/inifile
+### NTP CONFIGURATIONS ###
+if [[ "$ntp_server" != "" ]]; then
+    mv /etc/ntp.conf /etc/ntp.conf.orig
+    # Comment out original server lines
+    sed -e 's/^\(\s*server.*\)/#\1/' /etc/ntp.conf.orig > /etc/ntp.conf
 
-# Update the ini file with the resource tool.
-<% broker.each do |setting, value| %>
-/opt/puppetlabs/bin/puppet resource ini_setting ensure=present path=/etc/puppetlabs/puppet/puppet.conf section=main setting=<%= setting.shellescape %> value=<%= value.shellescape %>
+    # Append desired server entry
+    echo "# SERVER(S) ADDED BY ASM KICKSTART" >> /etc/ntp.conf
+<% (options['ntp_server'] || '').strip.split(',').each do |ntp| %>
+    echo "server <%= ntp.strip %> iburst" >> /etc/ntp.conf
 <% end %>
-<% end %>
+    case "${flavour}" in
+        centos|redhat*)
+            case "${release}" in
+                6)
+                    /sbin/chkconfig --level 345 ntpd on
+                    service ntpd start
+                    ;;
+                7)
+                    systemctl enable ntpd.service
+                    systemctl start ntpd.service
+                    ;;
+                *) Fail "Can't configure NTP for release ${release}!" ;;
+            esac
+        ;;
+        *)
+            Fail "Can't configure NTP for version ${flavour}!"
+        ;;
+    esac
+fi
+
+#update puppet.conf file
+cat > /etc/puppetlabs/puppet/puppet.conf << EOF
+[main]
+server = <%= broker[:server] %>
+logdir = /var/log/puppet
+rundir = /var/run/puppet
+ssldir = \$vardir/ssl
+configtimeout = 600
+runinterval = 5m
+[agent]
+classfile   = \$vardir/classes.txt
+localconfig = \$vardir/localconfig
+certname    = <%= node.policy.node_metadata["installer_options"]["agent_certname"] %>
+EOF
 
 # For debugging, just in case, dump out the modified confirmation file.
 echo ====================[ /etc/puppetlabs/puppet/puppet.conf ]=========================
