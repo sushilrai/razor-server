@@ -10,7 +10,7 @@ keyboard us
 rootpw --iscrypted <%=
     require 'asm/cipher'
     require 'unix_crypt'
-    asm_decrypted_password = ASM::Cipher.decrypt_string(node.root_password)
+    asm_decrypted_password = ASM::Cipher.decrypt_credential(node.root_password)['password']
     UnixCrypt::SHA512.build(asm_decrypted_password)
 %>
 <%
