@@ -38,6 +38,10 @@ fi
 
 # Synchronize time with ntpdate server before registering with the server.
 ntpdate_server=<%= broker[:ntpdate_server] || '' %>
+
+# Don't let synchronization errors cause the script to fail entirely
+set +e
+
 if [ -z $ntpdate_server ]; then
     : # skipping ntpdate since `ntpdate_server` is not set
 elif cmd ntpdate; then
@@ -49,6 +53,9 @@ elif cmd yum; then
 else
     warn "unable to synchronize time with ntpdate"
 fi
+
+# Re-enable exit on error after NTP synchronization is done
+set -e
 
 # Now we have that, we can install our platform specific package to define
 # the repositories.  Thankfully this is also pretty damn simple to get right.
