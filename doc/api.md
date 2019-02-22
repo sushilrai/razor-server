@@ -9,7 +9,7 @@ As developers, we promise good compatibility and support for your client if
 you follow the simple rule: use navigation, rather than client-side knowledge
 of the URL structure.
 
-To do that, implement any action by starting at `https://razor:8080/api`,
+To do that, implement any action by starting at `https://razor:8150/api`,
 rather than anywhere else in the API namespace.  This document then allows you
 to navigate -- much like a web browser can navigate a website -- through the
 various query options available to you.
@@ -53,7 +53,7 @@ type on the same server.
 
 ### `/api` document reference
 
-When you fetch `https://razor:8080/api`, you fetch the top level entry point
+When you fetch `https://razor:8150/api`, you fetch the top level entry point
 for navigating through our command and query facilities.  The structure of
 this document is a JSON object with the following keys:
 
@@ -121,6 +121,7 @@ nothing will be downloaded onto the Razor server:
     {
       "name": "fedora19",
       "url": "http://mirrors.n-ix.net/fedora/linux/releases/19/Fedora/x86_64/os/"
+      "task": "noop"
     }
 
 The third form is created by providing a `no-content` property when you
@@ -410,7 +411,7 @@ errors may occur.
       "policy": "my_policy",
       "broker": "other_broker"
     }
-
+    
 ### Update policy node metadata
 
 This ensures that the specified policy applies the given node metadata
@@ -473,7 +474,7 @@ configuration corresponding to that hook_type:
     }
 
 The code on the server would be contained in the `hooks/some_hook.hook`
-directory. More information on hooks can be found in the Hooks README
+directory. More information on hooks can be found in the Hooks README 
 (`hooks.md`).
 
 ### Update hook configuration
@@ -767,19 +768,27 @@ id   | a URL that uniquely identifies the object
 spec | a URL that identifies the type of the object
 name | a human-readable name for the object
 
+A `GET` request to an `/api/collections/<type>` endpoint, save for when `<type> = config`,
+also lets you pass in an optional `depth` parameter that has two possible values:
+`0` and `1`. `0` will return a list of JSON objects containing only the `id`, `spec`, and
+`name` keys above (i.e. a list of object references) -- this is the default behavior.
+`1` will return a fully expanded list of JSON objects containing additional keys, where
+each object is equivalent to the JSON returned by querying the URL specified in the `id`
+key.
+
 Different types of objects may specify other properties by defining additional
 key-value pairs. For example, here is a sample tag listing:
 
     [
       {
-        "spec": "https://localhost:8080/spec/object/tag",
-        "id": "https://localhost:8080/api/collections/objects/14",
+        "spec": "https://localhost:8150/spec/object/tag",
+        "id": "https://localhost:8150/api/collections/objects/14",
         "name": "virtual",
         "rule": [ "=", [ "fact", "is_virtual" ], true ]
       },
       {
-        "spec": "https://localhost:8080/spec/object/tag",
-        "id": "https://localhost:8080/api/collections/objects/27",
+        "spec": "https://localhost:8150/spec/object/tag",
+        "id": "https://localhost:8150/api/collections/objects/27",
         "name": "group 4",
         "rule": [
           "in", [ "fact", "dhcp_mac" ],

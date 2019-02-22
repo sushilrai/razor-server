@@ -4,7 +4,11 @@
     <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <DiskConfiguration>
         <Disk wcm:action="add">
+<<<<<<< HEAD
 <% if node.hw_hash['fact_boot_type'] == "efi" -%>
+=======
+<% if node.hw_hash['fact_boot_type'] == "efi" %>
+>>>>>>> tags/1.9.4
           <CreatePartitions>
             <CreatePartition wcm:action="add">
               <Order>1</Order>
@@ -22,7 +26,11 @@
               <Type>Primary</Type>
             </CreatePartition>
           </CreatePartitions>
+<<<<<<< HEAD
 <% else -%>
+=======
+<% else %>
+>>>>>>> tags/1.9.4
           <CreatePartitions>
             <CreatePartition wcm:action="add">
               <Order>1</Order>
@@ -50,7 +58,11 @@
               <Label>System</Label>
             </ModifyPartition>
           </ModifyPartitions>
+<<<<<<< HEAD
 <% end -%>
+=======
+<% end %>
+>>>>>>> tags/1.9.4
           <DiskID>0</DiskID>
           <WillWipeDisk>true</WillWipeDisk>
         </Disk>

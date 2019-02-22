@@ -1,5 +1,48 @@
 # Razor Server Release Notes
 
+## 1.9.1 - 2018-05-31
+
+### API changes
+
++ NEW: Added a `depth` parameter to the `/api/collections/<type>`
+  endpoints, save for when `<type> = config`, that has two possible
+  values: `0` and `1`. `0` will return a list of object references,
+  while `1` will return the fully expanded list of objects. `0` is the
+  default behavior when the `depth` parameter is not provided. See
+  `doc/api.md` for more details.
+
+### Other
+
++ IMPROVEMENT: Updated Sinatra to version 2.0.1.
+
+## 1.8.1 - 2018-04-24
+
+### Task changes
+
++ BUGFIX: Fixed typo in the `windows/2012r2` task's unattended.xml.
++ REMOVED: Removed `ubuntu/lucid` and `ubuntu/precise` tasks due to
+  their End-of-Life dates being reached (April 2015 and April 2017
+  respectively).
+
+### Other
+
++ BUGFIX: Fixed scenario where fast-running hook scripts would exit
+  before STDIN could be written.
++ IMPROVEMENT: Updated to JRuby 9000.
++ IMPROVEMENT: Updated to Torquebox 3.2.0.
++ IMPROVEMENT: Standardizing vanagon packaging for easier future
+  maintenance.
++ IMPROVEMENT: Now attempts HEAD request with TLS on localhost port 8151
+  before falling back to non-TLS on localhost port 8150.
++ IMPROVEMENT: Added documentation for encrypting passwords in Shiro.
+
+## 1.7.1 - 2018-02-07
+
+### Other
+
++ BUGFIX: Fixed error in 1.7.0 where nodes would be incorrectly
+  coalesced together due to the new `fact_boot_type` value in `hw_info`.
+
 ## 1.7.0 - 2018-01-17
 
 ### API changes

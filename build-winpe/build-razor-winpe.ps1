@@ -20,6 +20,7 @@ function get-currentdirectory {
     $thisName = $MyInvocation.MyCommand.Name
     [IO.Path]::GetDirectoryName((Get-Content function:$thisName).File)
 }
+
 function check-validip ([string]$isvalidip) {
    $hasfouroctet = (($isvalidip.Split((".")) | Measure-Object).Count -eq 4)
    if(!$hasfouroctet) {
@@ -523,8 +524,3 @@ Remove-Item $installwimloc
 #Unmount customer's .iso
 Write-host 'Unmounting customer windows .iso'
 Dismount-DiskImage -ImagePath $userisoloc
-
-
-
-
-

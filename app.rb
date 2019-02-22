@@ -26,7 +26,7 @@ class Razor::App < Sinatra::Base
     # eg, get the subject work.  The middleware is responsible for binding
     # into place our security manager and subject instance.  We only protect
     # paths if security is enabled, though.
-    use Razor::Middleware::Auth, %r{/api($|/)}i
+    use Razor::Middleware::Auth, %r{/api}i
 
     set :show_exceptions, false
   end
@@ -61,9 +61,11 @@ and requires full control over the database (eg: add and remove tables):
 
   before do
     FastGettext.locale = GettextSetup.negotiate_locale(env["HTTP_ACCEPT_LANGUAGE"])
+
+    params.delete('captures')
   end
 
-  before %r'/api($|/)'i do
+  before %r'/api'i do
     # Ensure that we can happily talk application/json with the client.
     # At least this way we tell you when we are going to be mean.
     #
@@ -289,31 +291,37 @@ and requires full control over the database (eg: add and remove tables):
 
   # Error handlers for node API
   error Razor::TemplateNotFoundError do
-    status [404, {error: env["sinatra.error"].to_s}.to_json]
+    status 404
+    body ({error: env["sinatra.error"].to_s}.to_json)
   end
 
   error Razor::Util::ConfigAccessProhibited do
-    status [500, {error: env["sinatra.error"].to_s}.to_json]
+    status 500
+    body ({error: env["sinatra.error"].to_s}.to_json)
   end
 
   error org.apache.shiro.authz.UnauthorizedException do
-    status [403, {error: env["sinatra.error"].to_s}.to_json]
+    status 403
+    body ({error: env["sinatra.error"].to_s}.to_json)
   end
 
   [ArgumentError, TypeError, Sequel::ValidationFailed, Sequel::Error].each do |fault|
     error fault do
       e = env["sinatra.error"]
-      status [400, {error: e.to_s}.to_json]
+      status 400
+      body ({error: e.to_s}.to_json)
     end
   end
 
   error Razor::ValidationFailure do
     e = env["sinatra.error"]
-    status [e.status, {error: e.to_s}.to_json]
+    status e.status
+    body ({error: e.to_s}.to_json)
   end
 
   error Razor::Conflict do
-    status [409, {error: env['sinatra.error'].to_s}.to_json]
+    status 409
+    body ({error: env['sinatra.error'].to_s}.to_json)
   end
 
 
@@ -420,6 +428,7 @@ and requires full control over the database (eg: add and remove tables):
   end
 
   get '/svc/boot' do
+    params.delete('captures')
     begin
       @node = Razor::Data::Node.lookup(params)
     rescue Razor::Data::DuplicateNodeError => e
@@ -462,7 +471,7 @@ and requires full control over the database (eg: add and remove tables):
   get '/svc/file/:node_id/raw/:filename' do
     logger.info("#{params[:node_id]}: raw file #{params[:filename]}")
 
-    halt 404 if params[:filename] =~ /\.erb$/i # no raw template access
+    halt 404 if params[:filename] =~ /\.erb/i # no raw template access
 
     @node = Razor::Data::Node[params[:node_id]]
     halt 404 unless @node
@@ -629,9 +638,21 @@ and requires full control over the database (eg: add and remove tables):
   #
   # @todo danielp 2013-06-26: this should be some sort of discovery, not a
   # hand-coded list, but ... it will do, for now.
-  COLLECTIONS = [:brokers, :repos, :tags, :policies,
-                 [:nodes, {'start' => {"type" => "number"}, 'limit' => {"type" => "number"}}], :tasks, :commands,
-                 [:events, {'start' => {"type" => "number"}, 'limit' => {"type" => "number"}}], :hooks, :config]
+  START_PARAM = {'start' => {"type" => "number"}}
+  LIMIT_PARAM = {'limit' => {"type" => "number"}}
+  DEPTH_PARAM = {'depth' => {"type" => "number"}}
+  COLLECTIONS = {
+    :brokers  => [DEPTH_PARAM],
+    :repos    => [DEPTH_PARAM],
+    :tags     => [DEPTH_PARAM],
+    :policies => [DEPTH_PARAM],
+    :nodes    => [START_PARAM, LIMIT_PARAM, DEPTH_PARAM],
+    :tasks    => [DEPTH_PARAM],
+    :commands => [DEPTH_PARAM],
+    :events   => [START_PARAM, LIMIT_PARAM, DEPTH_PARAM],
+    :hooks    => [DEPTH_PARAM],
+    :config   => []
+  }
 
   #
   # The main entry point for the public/management API
@@ -652,11 +673,15 @@ and requires full control over the database (eg: add and remove tables):
     # `id` key for some time so we don't break older clients.
     {
       "commands" => Razor::Command.all.map(&:to_command_list_hash).map {|c| c.dup.update("id" => url(c["id"])) },
-      "collections" => COLLECTIONS.map do |coll|
-        coll, params = coll if coll.is_a?(Array)
-        { "name" => coll, "rel" => spec_url("/collections/#{coll}"),
-          "id" => url("/api/collections/#{coll}"),
-          "params" => params }.delete_if { |_, v| v.nil? }
+      "collections" => COLLECTIONS.map do |coll, params|
+        params = params.inject({}) { |accum, param| accum.merge(param) }
+        coll_response_hash = {
+          "name" => coll,
+          "rel" => spec_url("/collections/#{coll}"),
+          "id" => url("/api/collections/#{coll}")
+        }
+        coll_response_hash["params"] = params unless params.empty?
+        coll_response_hash
       end,
       "version" => { "server" => Razor::VERSION }
     }.to_json
@@ -680,12 +705,16 @@ and requires full control over the database (eg: add and remove tables):
 
   # We can generically permission check "any read at all" on the
   # collection entries, thankfully.
-  before %r{^/api/collections/([^/]+)/?([^/]+)?$}i do |collection, item|
+  before %r{/api/collections/([^/]+)/?([^/]+)?}i do |collection, item|
+    params.delete('captures')
     check_permissions!("query:#{collection}" + (item ? ":#{item}" : ''))
   end
 
   get '/api/collections/tags' do
-    collection_view Razor::Data::Tag, "tags"
+    collection_view Razor::Data::Tag,
+      "tags",
+      depth: params[:depth],
+      hash_fn: :tag_hash 
   end
 
   get '/api/collections/tags/:name' do
@@ -707,7 +736,10 @@ and requires full control over the database (eg: add and remove tables):
   end
 
   get '/api/collections/brokers' do
-    collection_view Razor::Data::Broker, 'brokers'
+    collection_view Razor::Data::Broker,
+      'brokers',
+      depth: params[:depth],
+      hash_fn: :broker_hash
   end
 
   get '/api/collections/brokers/:name' do
@@ -723,7 +755,10 @@ and requires full control over the database (eg: add and remove tables):
   end
 
   get '/api/collections/policies' do
-    collection_view Razor::Data::Policy.order(:rule_number), 'policies'
+    collection_view Razor::Data::Policy.order(:rule_number),
+      'policies',
+      depth: params[:depth],
+      hash_fn: :policy_hash
   end
 
   get '/api/collections/policies/:name' do
@@ -739,7 +774,10 @@ and requires full control over the database (eg: add and remove tables):
   end
 
   get '/api/collections/tasks' do
-    collection_view Razor::Task, 'tasks'
+    collection_view Razor::Task,
+      'tasks',
+      depth: params[:depth],
+      hash_fn: :task_hash
   end
 
   get '/api/collections/tasks/*' do |name|
@@ -753,7 +791,10 @@ and requires full control over the database (eg: add and remove tables):
   end
 
   get '/api/collections/repos' do
-    collection_view Razor::Data::Repo, 'repos'
+    collection_view Razor::Data::Repo,
+      'repos',
+      depth: params[:depth],
+      hash_fn: :repo_hash
   end
 
   get '/api/collections/repos/:name' do
@@ -764,7 +805,9 @@ and requires full control over the database (eg: add and remove tables):
 
   get '/api/collections/commands' do
     collection_view Razor::Data::Command.order(:submitted_at).reverse,
-      'commands'
+      'commands',
+      depth: params[:depth],
+      hash_fn: :command_hash
   end
 
   get '/api/collections/commands/:id' do
@@ -784,7 +827,12 @@ and requires full control over the database (eg: add and remove tables):
     # Need to also order by ID here in case the granularity of timestamp is
     # not enough to maintain a consistent ordering.
     cursor = Razor::Data::Event.order(:timestamp).order(:id).reverse
-    collection_view cursor, 'events', limit: params[:limit], start: params[:start]
+    collection_view cursor,
+      'events',
+      limit: params[:limit],
+      start: params[:start],
+      depth: params[:depth],
+      hash_fn: :event_hash
   end
 
   get '/api/collections/events/:id' do
@@ -798,7 +846,10 @@ and requires full control over the database (eg: add and remove tables):
   get '/api/collections/hooks' do
     check_permissions!("query:hooks")
 
-    collection_view Razor::Data::Hook, 'hooks'
+    collection_view Razor::Data::Hook,
+      'hooks',
+      depth: params[:depth],
+      hash_fn: :hook_hash
   end
 
   get '/api/collections/hooks/:name' do
@@ -819,7 +870,12 @@ and requires full control over the database (eg: add and remove tables):
   end
 
   get '/api/collections/nodes' do
-    collection_view Razor::Data::Node.search(params).order(:id), 'nodes', limit: params[:limit], start: params[:start]
+    collection_view Razor::Data::Node.search(params).order(:id),
+      'nodes',
+      limit: params[:limit],
+      start: params[:start],
+      depth: params[:depth],
+      hash_fn: :node_hash
   end
 
   get '/api/collections/nodes/:name' do
