@@ -32,6 +32,8 @@ gem 'rake'
 # unencrypted, over the wire during kickstart phases, etc.
 gem "unix-crypt", "~> 1.1.1"
 
+# VxFM-specific dependency
+gem 'dell-asm-util', '~> 0.1.0'
 
 group :doc do
   gem 'yard', '~> 0.9.11'
