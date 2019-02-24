@@ -82,13 +82,13 @@ describe Razor::Data::Repo do
         context "in PostgreSQL" do
           it "should be rejected at the start" do
             expect {
-              Repo.dataset.insert(Fabricate.build(:repo, :name => "#{ws}name"))
+              Fabricate.build(:repo, :name => "#{ws}name").save(validate: false)
             }.to raise_error Sequel::CheckConstraintViolation
           end
 
           it "should be rejected at the end" do
             expect {
-              Repo.dataset.insert(Fabricate.build(:repo, :name => "name#{ws}"))
+              Fabricate.build(:repo, :name => "name#{ws}").save(validate: false)
             }.to raise_error Sequel::CheckConstraintViolation
           end
 
@@ -96,7 +96,7 @@ describe Razor::Data::Repo do
           # common failure mode, and not in fact redundant to the checks above.
           it "should be rejected at both the start and the end" do
             expect {
-              Repo.dataset.insert(Fabricate.build(:repo, :name => "#{ws}name#{ws}"))
+              Fabricate.build(:repo, :name => "#{ws}name#{ws}").save(validate: false)
             }.to raise_error Sequel::CheckConstraintViolation
           end
 
@@ -225,7 +225,7 @@ describe Razor::Data::Repo do
 
         it "PostgreSQL should reject invalid URL #{url.inspect}" do
           expect {
-            Repo.dataset.insert(Fabricate.build(:repo, :iso_url => url))
+            Fabricate.build(:repo, :iso_url => url).save(validate: false)
           }.to raise_error Sequel::CheckConstraintViolation
         end
       end
@@ -278,6 +278,9 @@ describe Razor::Data::Repo do
       let :command do Fabricate(:command) end
 
       it "should raise (to trigger a retry) if the repo is not readable" do
+        pending("Skipping this test because process is running with " +
+                "root user privileges and root can read everything") if Process.uid == 0
+
         File.chmod(00000, path) # yes, *no* permissions, thanks
         expect {
           repo.make_the_repo_accessible(command)

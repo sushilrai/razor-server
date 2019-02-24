@@ -6,7 +6,7 @@
      require "json"
      require "asm/network_configuration"
 
-     kernel_opts = {}
+     kernel_opts = {:initrd => "initrd.img"}
 
      network_config = ASM::NetworkConfiguration.new(JSON.parse(options["network_configuration"]))
      partition = network_config.get_partitions("PXE").first
@@ -26,5 +26,4 @@
 
 %>
 
-ks=<%= file_url("kickstart") %> <%= k_opts.empty? ? "network ksdevice=bootif BOOTIF=01-${netX/mac}" : k_opts %>
-
+ks=<%= file_url("kickstart") %> <%= k_opts.empty? ? "network initrd=initrd.img ksdevice=bootif BOOTIF=01-${netX/mac}" : k_opts %>
