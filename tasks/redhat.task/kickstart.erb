@@ -91,6 +91,7 @@ yum-utils
 %pre
 <% if options["target_boot_device"] =~ /LOCAL_FLASH_STORAGE/%>
   FIRST_PERC_VOL=$(ls -1 /dev/disk/by-path/pci-*-ata* | sort -t- -k 4 | head -1)
+  echo $FIRST_PERC_VOL > /root/first_perc_vol.txt
 <% elsif %w(HD).include?(options["target_boot_device"]) %>
   FIRST_PERC_VOL=$(ls -1 /dev/disk/by-path/pci-*-scsi-0:[1-9]:0:0 | head -1)
 <% else %>
@@ -105,10 +106,13 @@ yum-utils
   echo "ignoredisk --only-use=$FIRST_PERC_VOL" >> /tmp/ignoredisk
   echo "clearpart --all --initlabel"  >> /tmp/ignoredisk
   echo "autopart" >> /tmp/ignoredisk
+%end
 
+%post --log=/var/log/razor.log
+echo Kickstart post
 <% if options["target_boot_device"] =~ /LOCAL_FLASH_STORAGE/%>
   # Clear existing partitions on all disks
-  system_partition=`fdisk -l | egrep '/dev/[a-zA-Z]+[0-9]  *' | sed -E -e 's/[[:blank:]]+/\n/g' | egrep '[a-zA-Z]+[0-9]' | cut -f3 -d'/'`
+  system_partition=`fdisk -l | egrep '/dev/[a-zA-Z]+[0-9]' | grep '*' | sed -E -e 's/[[:blank:]]+/\n/g' | egrep '[a-zA-Z]+[0-9]' | cut -f3 -d'/'`
   system_disk=`echo $system_partition | sed -E -e 's/[0-9]+//g'`
   disks=`lsblk -n -p -fs | grep -v $system_partition  | grep -v $system_disk | grep -v sr0`
   cat /proc/partitions > /tmp/partitions
@@ -120,16 +124,14 @@ yum-utils
     done
   fi
 
+  FIRST_PERC_VOL=`cat /root/first_perc_vol.txt`
+  disks=`ls -1 /dev/disk/by-path/pci-* | grep -v $FIRST_PERC_VOL | grep -v part`
   for disk in $disks; do
     echo "Cleaning Disk: $disk"
     dd if=/dev/zero of=$disk bs=1M count=50 status=progress
   done
 <% end %>
 
-%end
-
-%post --log=/var/log/razor.log
-echo Kickstart post
 curl -s -o /root/razor_postinstall.sh <%= file_url("post_install") %>
 
 # Run razor_postinstall.sh on next boot via rc.local
