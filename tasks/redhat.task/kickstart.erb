@@ -124,7 +124,7 @@ echo Kickstart post
     done
   fi
 
-  FIRST_PERC_VOL=`cat /root/first_perc_vol.txt`
+  FIRST_PERC_VOL=$(ls -1 /dev/disk/by-path/pci-*-ata* | sort -t- -k 4 | head -1)
   disks=`ls -1 /dev/disk/by-path/pci-* | grep -v $FIRST_PERC_VOL | grep -v part`
   for disk in $disks; do
     echo "Cleaning Disk: $disk"
