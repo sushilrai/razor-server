@@ -5,4 +5,5 @@
 :: - Downloads the broker to this folder.
 :: - Runs the broker.
 :: - Deletes the file it downloaded.
-powershell.exe -executionpolicy bypass -command "set-variable -name temp -value (join-path -path (Get-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Session Manager\Environment' -Name TEMP).TEMP -childpath razor-broker.ps1); (New-Object System.Net.WebClient).DownloadFile('<%= broker_install_url('install.ps1') %>',$temp);invoke-expression $temp;remove-item $temp"
+powershell.exe -executionpolicy bypass -command "do { $ping = test-connection -comp '<%= URI.parse(repo_url).host %>' -count 3 } until ($ping)" *>> setup_output.txt
+powershell.exe -executionpolicy bypass -command "set-variable -name temp -value (join-path -path (Get-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Session Manager\Environment' -Name TEMP).TEMP -childpath razor-broker.ps1); (New-Object System.Net.WebClient).DownloadFile('<%= broker_install_url('install.ps1') %>',$temp);invoke-expression $temp;remove-item $temp" *>> setup_output.txt

@@ -1,0 +1,26 @@
+#!ipxe
+echo ======================================================================
+echo freeing all loaded images to ensure wimboot works
+imgfree
+echo ======================================================================
+
+set base <%= repo_url.sub(%r{/$}, '') %>
+
+cpuid --ext 29 && set arch amd64 || set arch x86
+kernel <%= file_url('wimboot', true) %>
+
+initrd ${base}/bootmgr.efi                                bootmgr.efi
+initrd ${base}/bootmgr.exe                                bootmgr.exe
+initrd ${base}/efi/boot/bootx64.efi                       bootx64.efi
+initrd ${base}/efi/microsoft/boot/resources/bootres.dll   bootres.dll
+initrd ${base}/efi/microsoft/boot/bcd                     BCD
+initrd ${base}/efi/microsoft/boot/fonts/segmono_boot.ttf  segmono_boot.ttf
+initrd ${base}/efi/microsoft/boot/fonts/segoe_slboot.ttf  segoe_slboot.ttf
+initrd ${base}/efi/microsoft/boot/fonts/wgl4_boot.ttf     wgl4_boot.ttf
+initrd ${base}/boot/boot.sdi                              boot.sdi
+initrd -n boot.wim ${base}/razor-winpe.wim                boot.wim
+
+echo ======================================================================
+imgstat
+echo now booting WinPE client
+boot
