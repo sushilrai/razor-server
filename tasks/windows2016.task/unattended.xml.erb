@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<% require 'asm/cipher'
+   require 'asm/util'
+   image_type = (node.policy.node_metadata["os_image_version"] == "windows2016datacenter") ? "Windows Server 2016 SERVERDATACENTER" : "Windows Server 2016 SERVERSTANDARD"
+   admin_password = ASM::Cipher.decrypt_credential(node.root_password)['password']
+%>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+  <settings pass="windowsPE">
+    <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <DiskConfiguration>
+        <Disk wcm:action="add">
+<% if node.hw_hash['fact_boot_type'] == "efi" %>
+           <CreatePartitions>
+            <CreatePartition wcm:action="add">
+              <Order>1</Order>
+              <Size>200</Size>
+              <Type>EFI</Type>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>2</Order>
+              <Size>128</Size>
+              <Type>MSR</Type>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Extend>true</Extend>
+              <Order>3</Order>
+              <Type>Primary</Type>
+            </CreatePartition>
+          </CreatePartitions>
+<% else %>
+           <CreatePartitions>
+            <CreatePartition wcm:action="add">
+              <Order>1</Order>
+              <Size>350</Size>
+              <Type>Primary</Type>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Extend>true</Extend>
+              <Order>2</Order>
+              <Type>Primary</Type>
+            </CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add">
+              <Active>true</Active>
+              <Format>NTFS</Format>
+              <Label>Boot</Label>
+              <Order>1</Order>
+              <PartitionID>1</PartitionID>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>2</Order>
+              <PartitionID>2</PartitionID>
+              <Format>NTFS</Format>
+              <Label>System</Label>
+            </ModifyPartition>
+          </ModifyPartitions>
+<% end %>
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+        </Disk>
+      </DiskConfiguration>
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+        <ProductKey>
+          <WillShowUI>OnError</WillShowUI>
+          <Key><%= node.policy.node_metadata['installer_options']['product_key'] || 'WC2BQ-8NRM3-FDDYY-2BFGV-KHKQY' %></Key>
+        </ProductKey>
+      </UserData>
+      <ImageInstall>
+        <OSImage>
+          <InstallFrom>
+            <MetaData wcm:action="add">
+              <Key>/IMAGE/NAME</Key>
+              <Value><%= image_type %></Value>
+            </MetaData>
+          </InstallFrom>
+          <InstallTo>
+            <DiskID>0</DiskID>
+<% if node.hw_hash['fact_boot_type'] == "efi" %>
+            <PartitionID>3</PartitionID>
+<% else %>
+            <PartitionID>2</PartitionID>
+<% end %>
+          </InstallTo>
+          <InstallToAvailablePartition>false</InstallToAvailablePartition>
+          <WillShowUI>OnError</WillShowUI>
+        </OSImage>
+      </ImageInstall>
+    </component>
+    <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <InputLocale><%= node.policy.node_metadata['win_language'] || 'en-US' %></InputLocale>
+      <SystemLocale><%= node.policy.node_metadata['win_language'] || 'en-US' %></SystemLocale>
+      <UILanguage><%= node.policy.node_metadata['win_language'] || 'en-US' %></UILanguage>
+      <UserLocale><%= node.policy.node_metadata['win_language'] || 'en-US' %></UserLocale>
+    </component>
+  </settings>
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <UserAccounts>
+        <AdministratorPassword>
+          <Value><%= admin_password %></Value>
+          <PlainText>true</PlainText>
+        </AdministratorPassword>
+      </UserAccounts>
+      <RegisteredOrganization>---</RegisteredOrganization>
+      <RegisteredOwner>---</RegisteredOwner>
+    </component>
+  </settings>
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <OEMInformation>
+        <HelpCustomized>false</HelpCustomized>
+      </OEMInformation>
+      <ComputerName><%= node.hostname.split('.').first %></ComputerName>
+      <TimeZone><%= node.policy.node_metadata['time_zone_windows'] || 'Central Standard Time' %></TimeZone>
+    </component>
+    <component name="Microsoft-Windows-OutOfBoxExperience" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <DoNotOpenInitialConfigurationTasksAtLogon>true</DoNotOpenInitialConfigurationTasksAtLogon>
+    </component>
+    <component name="Microsoft-Windows-ServerManager-SvrMgrNc" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <DoNotOpenServerManagerAtLogon>true</DoNotOpenServerManagerAtLogon>
+    </component>
+    <component name="Microsoft-Windows-Security-Licensing-SLC-UX" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <SkipAutoActivation>true</SkipAutoActivation>
+    </component>
+    <%= render_template("windows_static_network") %>
+    <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <RunSynchronous>
+<%=
+  if node.policy.node_metadata['installer_options']['ntp_server']
+    ntp_servers = node.policy.node_metadata['installer_options']['ntp_server'].delete(" ").split(",").join(" ")
+    command1 = "cmd /c w32tm /config /manualpeerlist:\"#{ntp_servers}\" /syncfromflags:MANUAL"
+    command2 = "cmd /c \"sc config w32time start= auto\""
+    command3 = "powershell.exe -Command restart-Service w32time"
+    str = "<RunSynchronousCommand wcm:action=\"add\">
+          <Description>NTP Server configuration</Description>
+          <Order>1</Order>
+          <Path>#{command1}</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action=\"add\">
+          <Description>Configure service w32time as Automatic</Description>
+          <Order>2</Order>
+          <Path>#{command2}</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action=\"add\">
+          <Description>Start time configuration</Description>
+          <Order>3</Order>
+          <Path>#{command3}</Path>
+        </RunSynchronousCommand>"
+  end
+%>
+       <RunSynchronousCommand wcm:action="add">
+         <Description>Add to Hosts file</Description>
+         <Order>4</Order>
+         <Path>powershell.exe -Command "Add-Content -path 'c:\windows\system32\drivers\etc\hosts' -value '<%= URI.parse(repo_url).host %> dellasm'"</Path>
+       </RunSynchronousCommand>
+     </RunSynchronous>
+     </component>
+  </settings>
+</unattend>

@@ -33,7 +33,7 @@
           <!-- Evaluation key from
                http://technet.microsoft.com/en-us/library/jj612867.aspx
                Fill in your own for real deployments -->
-          <Key><%= node.metadata['productkey'] || 'V7C3N-3W6CM-PDKR2-KW8DQ-RJMRD' %></Key>
+          <Key><%= node.policy.node_metadata['product_key'] || 'V7C3N-3W6CM-PDKR2-KW8DQ-RJMRD' %></Key>
         </ProductKey>
       </UserData>
       <ImageInstall>
@@ -47,17 +47,17 @@
       </ImageInstall>
     </component>
     <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-      <InputLocale><%= node.metadata['win_language'] || 'en-US' %></InputLocale>
-      <SystemLocale><%= node.metadata['win_language'] || 'en-US' %></SystemLocale>
-      <UILanguage><%= node.metadata['win_language'] || 'en-US' %></UILanguage>
-      <UserLocale><%= node.metadata['win_language'] || 'en-US' %></UserLocale>
+      <InputLocale><%= node.policy.node_metadata['win_language'] || 'en-US' %></InputLocale>
+      <SystemLocale><%= node.policy.node_metadata['win_language'] || 'en-US' %></SystemLocale>
+      <UILanguage><%= node.policy.node_metadata['win_language'] || 'en-US' %></UILanguage>
+      <UserLocale><%= node.policy.node_metadata['win_language'] || 'en-US' %></UserLocale>
     </component>
   </settings>
   <settings pass="oobeSystem">
     <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <UserAccounts>
         <AdministratorPassword>
-          <Value><%= node.metadata['root_password'] || node.root_password %></Value>
+          <Value><%= node.policy.node_metadata['root_password'] || node.root_password %></Value>
           <PlainText>true</PlainText>
         </AdministratorPassword>
       </UserAccounts>
@@ -74,8 +74,8 @@
       <OEMInformation>
         <HelpCustomized>false</HelpCustomized>
       </OEMInformation>
-      <ComputerName><%= (node.metadata['hostname'] || node.hostname).split('.').first %></ComputerName>
-      <TimeZone><%= node.metadata['timezone'] || 'Pacific Standard Time' %></TimeZone>
+      <ComputerName><%= (node.policy.node_metadata['hostname'] || node.hostname).split('.').first %></ComputerName>
+      <TimeZone><%= node.policy.node_metadata['timezone'] || 'Pacific Standard Time' %></TimeZone>
     </component>
     <component name="Microsoft-Windows-OutOfBoxExperience" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <DoNotOpenInitialConfigurationTasksAtLogon>true</DoNotOpenInitialConfigurationTasksAtLogon>

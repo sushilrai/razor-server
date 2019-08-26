@@ -1,0 +1,40 @@
+# -*- powershell -*-
+write-host "Razor Windows broker script starting"
+$ErrorActionPreference = "Continue"
+$error.clear()
+
+if ((Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty OSArchitecture) -match '64') {
+  $arch = 'x64'
+} else {
+  $arch = 'x86'
+}
+
+
+$master = "<%= (broker[:server] || 'dellasm') %>"
+$version = "<%= (broker[:version] || '5.3.4') %>"
+$puppet_installer = "\\${master}\razor\puppet-agent\windows\puppet-agent-${version}-${arch}.msi"
+$sdc_installer = "\\${master}\razor\puppet-agent\windows\puppet-agent-${version}-${arch}.msi"
+
+do { $ping = test-connection -comp <%= (broker[:server] || 'dellasm') %> -count 3 } until ($ping)
+
+# set up the puppet agent as the last step
+write-host "Getting puppet agent installer from ${puppet_installer}"
+cmd /c "msiexec /qn /norestart /i ${puppet_installer} PUPPET_MASTER_SERVER=dellasm PUPPET_AGENT_CERTNAME=<%= node.policy.node_metadata['installer_options']['agent_certname'] %>"
+cmd /c 'REG.EXE ADD HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v PuppetCmd /t REG_SZ /d "cmd /c c:\Progra~1\Puppet~1\Puppet\bin\puppet.bat config set configtimeout 600 --section main" /f'
+cmd /c 'sc config puppet start=auto'
+cmd /c 'REG.EXE ADD HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce /v PuppetCmd /t REG_SZ /d "cmd /c c:\Progra~1\Puppet~1\Puppet\bin\puppet.bat config set runinterval 5m --section main" /f'
+
+<%=
+  if node.policy.node_metadata['installer_options']['hyperv_install']
+    "enable-windowsoptionalfeature -online -featurename microsoft-hyper-v -all -noRestart"
+  end
+%>
+
+write-host "notify Razor that the broker completed"
+(New-Object System.Net.WebClient).DownloadString('<%= stage_done_url %>')
+if($error.Count) {
+  write-host 'failed to tell Razor that the broker completed'
+}
+
+write-host "Restarting the OS to apply changes"
+Restart-Computer
