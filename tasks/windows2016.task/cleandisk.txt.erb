@@ -1,0 +1,6 @@
+select disk 0
+clean
+select disk <%= node.policy.node_metadata["os_disk_id"] || 0 %>
+clean
+convert gpt
+exit
