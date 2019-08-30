@@ -3,6 +3,7 @@
    require 'asm/util'
    image_type = (node.policy.node_metadata["os_image_version"] == "windows2016datacenter") ? "Windows Server 2016 SERVERDATACENTER" : "Windows Server 2016 SERVERSTANDARD"
    admin_password = ASM::Cipher.decrypt_credential(node.root_password)['password']
+   os_disk_id = node.metadata["os_disk_id"] || 0
 %>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
   <settings pass="windowsPE">
@@ -56,7 +57,7 @@
             </ModifyPartition>
           </ModifyPartitions>
 <% end %>
-          <DiskID>0</DiskID>
+          <DiskID><%= os_disk_id %></DiskID>
           <WillWipeDisk>true</WillWipeDisk>
         </Disk>
       </DiskConfiguration>
@@ -76,7 +77,7 @@
             </MetaData>
           </InstallFrom>
           <InstallTo>
-            <DiskID>0</DiskID>
+            <DiskID><%= os_disk_id %></DiskID>
 <% if node.hw_hash['fact_boot_type'] == "efi" %>
             <PartitionID>3</PartitionID>
 <% else %>
