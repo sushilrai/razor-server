@@ -1,0 +1,8 @@
+---
+os_version: 2019
+label: Microsoft Windows 2019
+description: Microsoft Windows 2019 Server
+base: windows2016
+boot_sequence:
+  1: boot_wim
+  default: boot_local
