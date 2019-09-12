@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <% require 'asm/cipher'
    require 'asm/util'
-   image_type = (node.policy.node_metadata["os_image_version"] == "windows2016datacenter") ? "Windows Server 2016 SERVERDATACENTER" : "Windows Server 2016 SERVERSTANDARD"
+
+   image_type = case (node.policy.node_metadata["os_image_version"])
+     when "windows2016datacenter" then "Windows Server 2016 SERVERDATACENTER"
+     when "windows2016standard" then "Windows Server 2016 SERVERSTANDARD"
+     when "windows2019datacenter" then "Windows Server 2019 SERVERDATACENTER"
+     when "windows2019standard" then "Windows Server 2019 SERVERSTANDARD"
+   end
+
    admin_password = ASM::Cipher.decrypt_credential(node.root_password)['password']
    os_disk_id = node.metadata["os_disk_id"] || 0
 %>
