@@ -27,9 +27,16 @@ If (!(Test-Path i:))
 start-sleep 10                  # time to settle -- needed on my VM :/
 
 
-<% if node.policy.node_metadata["installer_options"]["target_boot_device"] =~ /LOCAL_FLASH_STORAGE/%>
+<% if node.policy.node_metadata["installer_options"]["target_boot_device"] =~ /LOCAL_FLASH_STORAGE/ %>
   write-host "Getting the virtual disk ID for OS installation"
-  do { $os_disk_id = (Get-WmiObject -Class win32_diskdrive -Filter "model='DELLBOSS VD'").index } until( !($os_disk_id -eq $null) )
+  if (!((Get-WmiObject -Class win32_diskdrive -Filter "model='DELLBOSS VD'") -eq $null)) {
+    write-host "Getting the DELLBOSS VD disk drive index..."
+    do { $os_disk_id = (Get-WmiObject -Class win32_diskdrive -Filter "model='DELLBOSS VD'").index } until( !($os_disk_id -eq $null) )
+  } else {
+    do { $os_disk_id = (Get-WmiObject -Class win32_diskdrive -Filter "model like '%SATADOM%'").index } until( !($os_disk_id -eq $null) )
+    write-host "Getting the SATADOM disk drive index..."
+  }
+
   write-host "The virtual disk ID for OS installation is ${os_disk_id}"
   Invoke-WebRequest -Uri "<%= store_url("os_disk_id" => "${os_disk_id}") %>" -UseBasicParsing
   start-sleep 10
