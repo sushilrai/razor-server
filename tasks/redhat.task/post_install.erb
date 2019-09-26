@@ -33,11 +33,45 @@ iso_repo_url = parsed.to_s
 # add the dellasm host entry to /etc/hosts
 echo "<%= razor_ip %> dellasm" >> /etc/hosts
 
-# Disable base and updates repos as node may not have internet access
+<%
+# Grab the options hash to get the RCM repos
+options = node.policy.node_metadata["installer_options"] || {}
 
+repo_name = options["package_repo"]
+repos = options["repository_info"]
+vxos_repo = repos.find {|r| r["razorName"] == repo_name}
+
+yum_repos = vxos_repo["metadata"]["repos"]
+
+# Loop through all repos from the RCM and add them to /etc/yum.repos.d/
+yum_repos.each do |repo|
+  name = repo["name"] || "scaleio"
+  gpg_check = repo["gpg_key"] != "undef" && !!repo["gpg_key"]
+  base_url_path = [vxos_repo["baseUrl"], repo["base_path"]].reject {|e| e.nil? || e.empty?}.join("/")
+%>
+
+cat > /etc/yum.repos.d/<%= name %>.repo << EOF
+[<%= name %>]
+name=<%= repo["description"] %>
+baseurl=<%= base_url_path %>
+gpgcheck=<%= gpg_check %>
+<% if gpg_check %>
+gpgkey=<%= "%s/%s" % [base_url_path, repo["gpg_key"]] %>
+<% end %>
+EOF
+<%
+end %>
+
+# Install the rpms from the added repos with the base/updates/extras temporarily disabled
+# We will later permanently disable them with yum-config-manager
+yum --disablerepo=base --disablerepo=updates --disablerepo=extras install yum-utils ntp redhat-lsb -y
+
+# Disable base and updates repos permanently as node may not have internet access
 yum-config-manager --disable base
 yum-config-manager --disable updates
 yum-config-manager --disable extras
+
+yum update -y
 
 # Figure out which GPG key to use based on OS
 if grep -qi 'Red Hat' /etc/redhat-release; then
