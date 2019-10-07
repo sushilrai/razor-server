@@ -33,6 +33,18 @@ iso_repo_url = parsed.to_s
 # add the dellasm host entry to /etc/hosts
 echo "<%= razor_ip %> dellasm" >> /etc/hosts
 
+<%# Get the OS distribution, major, and minor versions %>
+<%# These commands only work for redhat-like distributions due to the absence of system-release on other distributions %>
+
+<%# Parse the /etc/system-release file to determine distribution and version %>
+if [ -f "/etc/system-release" ]; then
+  # Will resolve to either "centos", "redhat", or "fedora"
+  DISTRIBUTION=$(cat /etc/system-release | sed -e 's/.*\(CentOS\|Red\sHat\|Fedora\).*/\L\1/' | sed -e 's/\s//')
+  # Get first and second match for version numbers
+  MAJOR_VERSION=$(cat /etc/system-release | grep -oh "[0-9]*" | sed -n '1 p')
+  MINOR_VERSION=$(cat /etc/system-release | grep -oh "[0-9]*" | sed -n '2 p')
+fi
+
 <%
 # Grab the options hash to get the RCM repos
 options = node.policy.node_metadata["installer_options"] || {}
@@ -50,6 +62,14 @@ yum_repos.each do |repo|
   base_url_path = [vxos_repo["baseUrl"], repo["base_path"]].reject {|e| e.nil? || e.empty?}.join("/")
 %>
 
+<%# Check if repo is only for specific distribution, if it isn't assume it's for all distributions %>
+<% if repo["distribution"] %>
+if [[ $DISTRIBUTION == "<%= repo["distribution"] %>"
+  && $MAJOR_VERSION == "<%= repo["distribution_major_version"] %>"
+  && $MINOR_VERSION == "<%= repo["distribution_minor_version"] %>" ]]; then
+<% end %>
+
+<%# Write the yum repo file %>
 cat > /etc/yum.repos.d/<%= name %>.repo << EOF
 [<%= name %>]
 name=<%= repo["description"] %>
@@ -59,8 +79,13 @@ gpgcheck=<%= gpg_check %>
 gpgkey=<%= "%s/%s" % [base_url_path, repo["gpg_key"]] %>
 <% end %>
 EOF
-<%
-end %>
+
+<%# Check if repo is only for specific distribution (close if) %>
+<% if repo["distribution"] %>
+fi
+<% end
+end
+%>
 
 # Install the rpms from the added repos with the base/updates/extras temporarily disabled
 # We will later permanently disable them with yum-config-manager
