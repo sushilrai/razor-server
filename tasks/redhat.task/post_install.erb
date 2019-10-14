@@ -96,6 +96,16 @@ yum-config-manager --disable base
 yum-config-manager --disable updates
 yum-config-manager --disable extras
 
+# Check if the we are on RHEL 7.6 and doing an SO deployment with nvdimm compression
+# If so, install the kmod-redhat-nfit kernel patch so we can use nvdimm drives on RHEL 7.6
+<% if options["scaleio_role"] == "storage_only" && !!options["compression_enabled"] %>
+if [[ $DISTRIBUTION == "redhat"
+  && $MAJOR_VERSION == "7"
+  && $MINOR_VERSION == "6" ]]; then
+  yum install -y kmod-redhat-nfit
+fi
+<% end %>
+
 yum update -y
 
 # Figure out which GPG key to use based on OS
