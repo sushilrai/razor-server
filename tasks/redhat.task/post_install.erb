@@ -129,6 +129,15 @@ enabled=True
 EOF
 fi
 
+<%# Grab the script from the repo metadata %>
+<% script = vxos_repo["metadata"]["script"] %>
+
+<%# Check if the script exists, if it does, download and execute it %>
+<% if script %>
+# Download and execute the script specified on the repo metadata
+curl <%= [vxos_repo["baseUrl"], script].join("/") %> | bash
+<% end %>
+
 <%= render_template("os_complete") %>
 
 # We are done
