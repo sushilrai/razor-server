@@ -106,6 +106,7 @@ if [[ $DISTRIBUTION == "redhat"
 fi
 <% end %>
 
+yum install sg3_utils
 yum update -y
 
 # Figure out which GPG key to use based on OS
