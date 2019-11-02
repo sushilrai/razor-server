@@ -106,9 +106,6 @@ if [[ $DISTRIBUTION == "redhat"
 fi
 <% end %>
 
-yum install sg3_utils
-yum update -y
-
 # Figure out which GPG key to use based on OS
 if grep -qi 'Red Hat' /etc/redhat-release; then
   GPGKEY=RPM-GPG-KEY-redhat-release
@@ -129,6 +126,9 @@ gpgkey=<%= iso_repo_url %>$GPGKEY
 enabled=True
 EOF
 fi
+
+yum update -y
+yum install sg3_utils
 
 <%# Grab the script from the repo metadata %>
 <% script = vxos_repo["metadata"]["script"] %>
