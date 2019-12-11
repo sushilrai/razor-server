@@ -128,7 +128,7 @@ EOF
 fi
 
 yum update -y
-yum install sg3_utils
+yum install -y sg3_utils
 
 <%# Grab the script from the repo metadata %>
 <% script = vxos_repo["metadata"]["script"] %>
