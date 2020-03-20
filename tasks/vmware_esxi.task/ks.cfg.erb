@@ -204,6 +204,24 @@ esxcli system syslog config logger set --id=vpxa --rotate=20
 #add the puppet master host entry in /etc/hosts
 echo "<%= URI.parse(repo_url).host %> dellasm" >> /etc/hosts
 
+<%=
+  require 'asm/util'
+  options = node.policy.node_metadata['installer_options']
+  if options['dns_suffix'] && options['dns_suffix'] != "undef"
+    dns_suffix = options['dns_suffix']
+    "esxcli network ip dns search add --domain=#{dns_suffix}"
+  end
+%>
+
+<%=
+  require 'asm/util'
+  options = node.policy.node_metadata['installer_options']
+  if options['domain'] && options['domain'] != "undef"
+    domain = options['domain']
+    "esxcli system hostname set --domain=#{domain}"
+  end
+%>
+
 # NTP Setting
 ntp_server="<%=
     require 'asm/util'
